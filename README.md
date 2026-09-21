@@ -4,7 +4,8 @@ Gerador gratuito de escalas de trabalho (CLT) para estabelecimentos. O usuário 
 
 - **URL:** https://www.escalarapida.com.br
 - **Hospedagem:** Hostinger (hPanel, LiteSpeed) — confirmado pelos headers HTTP em 21/09/2026
-- **Status:** No ar. A versão publicada é a de 02/06/2026; o `index.html` desta pasta já tem as correções de 21/09/2026 (12x36 e escape de HTML), **ainda não publicadas**. Antes das correções os dois eram idênticos (só mudava o fim de linha CRLF no servidor).
+- **Status:** No ar, com as correções de 21/09/2026 (12x36 e escape de HTML). O site publicado é idêntico ao `index.html` desta pasta (conferido em 21/09/2026).
+- **Repositório:** https://github.com/alxsoares2/escalarapida-site (privado, branch `master`)
 - **Origem:** o arquivo foi gerado numa conversa com o Claude, baixado em 02/06/2026 (ficou em `Downloads/escalarapida-index.html`) e subido na Hostinger. Esta pasta passou a ser a fonte oficial em 21/09/2026.
 
 ## Stack
@@ -24,17 +25,21 @@ escalarapida-site/
 
 ## Deploy
 
-Manual: subir o `index.html` para o `public_html` do domínio escalarapida.com.br pelo Gerenciador de Arquivos / FTP da Hostinger. Não há build. Não há git remoto nem auto-deploy.
+**Automático.** Todo `git push` na branch `master` publica sozinho em escalarapida.com.br (Git do hPanel da Hostinger, conectado ao GitHub, diretório `public_html`). Testado em 21/09/2026: o push do `.htaccess` chegou ao ar em ~10 segundos sem nenhuma ação no painel.
 
-> A forma exata como o arquivo foi subido da primeira vez não está registrada em nenhum lugar. Se for outra que não o Gerenciador de Arquivos/FTP, corrigir aqui.
+```bash
+git add -A && git commit -m "..." && git push
+```
 
-Depois de subir, conferir com:
+- **A Hostinger publica o repositório inteiro** em `public_html`, incluindo `README.md` e `CLAUDE.md`. O `.htaccess` bloqueia o acesso público a arquivos `.md` (respondem 403). Qualquer arquivo novo que não deva ser público (notas, rascunhos, `.json` de teste) precisa ser bloqueado no `.htaccess` ou ficar fora do repositório.
+- Se o deploy automático parar, o painel tem o botão de implantar em hPanel → Sites → escalarapida.com.br → Avançado → GIT.
+- Conferir se o ar bate com o código:
 
 ```bash
 curl -s https://www.escalarapida.com.br | tr -d '\r' | diff - index.html
 ```
 
-(só deve aparecer a diferença de newline no fim do arquivo.)
+(o `tr -d '\r'` ignora o CRLF que o servidor coloca no arquivo.)
 
 ## Como o site funciona
 
@@ -89,7 +94,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 
 ## Pontos de atenção
 
-**Corrigidos em 21/09/2026** (ainda não publicados — ver Pendências):
+**Corrigidos e publicados em 21/09/2026:**
 
 1. **12x36 na visão mensal:** a folga usava a posição na semana e reiniciava a cada semana, o que fazia o funcionário trabalhar dois dias seguidos na virada sábado→domingo. Agora usa a data corrente (`folga12x36`). Testado em 60 dias seguidos: nunca há 2 dias trabalhados em sequência e os índices par/ímpar são complementares.
 2. **Texto do usuário sem escape de HTML:** nome, cargo, nome do estabelecimento e nomes nos domingos de folga passam por `esc()`, inclusive no PDF. Além disso `carregarConfig` agora valida o `.json` (horas `HH:MM`, tipo entre os 4 permitidos, números inteiros, ids gerados de novo) porque ids e horas iam para atributos `onclick`/`value`. Testado com arquivo malicioso: entradas inválidas são descartadas e um arquivo salvo por versões antigas continua carregando.
@@ -102,15 +107,14 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 
 ## Pendências / próximos passos
 
-- [ ] **Publicar as correções** de 21/09/2026 (12x36 e escape de HTML): subir o `index.html` para a Hostinger e conferir com o `curl | diff`
 - [ ] **Nova funcionalidade** — a definir (combinada em 21/09/2026, ainda sem especificação). Registrar aqui a spec e as decisões quando começar.
 - [ ] Decidir se vale trocar o arquivo único por estrutura com `css/` e `js/` separados (só se a funcionalidade nova crescer o suficiente).
-- [ ] Criar remote no GitHub (opcional).
 
 ## Histórico
 
 | Data | O que |
 |---|---|
 | 02/06/2026 | Primeira versão publicada em escalarapida.com.br (gerada pelo Claude numa conversa) |
-| 21/09/2026 | Corrigidos 12x36 entre semanas e escape de HTML / validação do `.json` carregado (local, ainda não publicado) |
+| 21/09/2026 | Corrigidos 12x36 entre semanas e escape de HTML / validação do `.json` carregado (publicado) |
+| 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |

@@ -5,7 +5,9 @@ Gerador de escala de trabalho (CLT), site de página única em https://www.escal
 ## Regras de trabalho
 
 - **Tudo é um arquivo só:** `index.html` (CSS em `<style>`, JS em `<script>` no fim). Sem build, sem framework, sem backend. Manter assim a menos que o dono peça outra estrutura.
-- **Deploy manual** na Hostinger (upload do `index.html` para `public_html`). Nunca afirmar que algo "está no ar" sem conferir com `curl -s https://www.escalarapida.com.br | tr -d '\r' | diff - index.html`.
+- **Deploy automático:** `git push` na `master` publica sozinho na Hostinger (repo `alxsoares2/escalarapida-site`, Git do hPanel → `public_html`). Publica o repositório inteiro, então arquivos que não devem ser públicos precisam ser bloqueados no `.htaccess` (hoje bloqueia `*.md`).
+- **Commit/push só quando o dono pedir:** push = publicar em produção.
+- Nunca afirmar que algo "está no ar" sem conferir com `curl -s https://www.escalarapida.com.br | tr -d '\r' | diff - index.html`.
 - **Não quebrar o formato do `.json` de configuração** (`salvarConfig`/`carregarConfig`): usuários têm arquivos salvos. Campos novos devem ser opcionais.
 - **Mexeu em regra trabalhista (jornada, intervalo, folga, domingo)?** Registrar a decisão no README, seção "Regras de cálculo", e não prometer conformidade legal além do que o código faz.
 - **Ao concluir uma mudança**, atualizar a tabela "Histórico" e as "Pendências" do README.
