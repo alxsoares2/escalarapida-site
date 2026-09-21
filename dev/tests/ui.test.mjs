@@ -15,8 +15,9 @@ async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = 
   const pasta = new URL('./', arquivo);
   let html = readFileSync(arquivo, 'utf8');
   html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) => {
-    if (src.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80};</script>`;
-    return `<script>${readFileSync(new URL(src, pasta), 'utf8')}</script>`;
+    const arq = src.split('?')[0];
+    if (arq.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80};</script>`;
+    return `<script>${readFileSync(new URL(arq, pasta), 'utf8')}</script>`;
   });
   const erros = [];
   const vc = new VirtualConsole();

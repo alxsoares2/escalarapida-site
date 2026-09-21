@@ -121,7 +121,7 @@ Celular do funcionário, geolocalização, foto/biometria, integração com o ge
 - **Banco:** migrations 0001–0007 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
 - **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026** (commit `8e339e1`), com a chave `anon` configurada e a conta do gestor criada.
 - **Feito depois, ainda só local (sem `git push`):** só o gestor desvincula computador; impressão automática do comprovante (Elgin i9); espelho novo (A.N., banco acumulado, carga horária). A migration 0007 (espelho) já está no banco real e é compatível com o frontend publicado.
-- **Testes:** 90 automáticos passando (apuração, segurança, telas).
+- **Testes:** 92 automáticos passando (apuração, segurança, telas).
 - **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
 
 ## 10. Pontos a confirmar com o dono

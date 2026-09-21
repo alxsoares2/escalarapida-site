@@ -17,11 +17,12 @@ Gerador de escala de trabalho (CLT), site de página única em https://www.escal
 
 Sistema separado do gerador de escala. Especificação em `docs/ponto/ESPECIFICACAO.md`; visão geral e operação no README. Regras de trabalho:
 
-- **Mudou regra de apuração?** Muda a especificação primeiro, depois a migration **nova** (nunca editar migration já aplicada), depois o teste. `cd dev && npm test` precisa ficar verde (90 testes).
+- **Mudou regra de apuração?** Muda a especificação primeiro, depois a migration **nova** (nunca editar migration já aplicada), depois o teste. `cd dev && npm test` precisa ficar verde (92 testes).
 - **Migrations:** `node --env-file=../../marcus-assistente/.env db/migrate.mjs` (no `dev/`). O banco é o **compartilhado** com Saas Financeiro e Marcus: só mexer no schema `ponto` e em `public.ponto_rpc`. Nunca imprimir `DATABASE_URL` nem chaves.
 - **Segurança da API:** o frontend só chama `public.ponto_rpc`. Função nova de API = `ponto.api_<nome>(jsonb)` que se autentica sozinha (token de estação + PIN, ou sessão de admin). Tabelas novas: ligar RLS e revogar de `anon`/`authenticated`. `service_role` nunca no frontend.
 - **Marcação é imutável:** nada de UPDATE/DELETE em `marcacao`. Correção = `ajuste` (acrescenta/desconsidera) com motivo. O relógio vem só de `ponto.agora()`.
 - **Frontend:** todo texto do usuário em `innerHTML` passa por `Ponto.esc()`. Testes de tela em `dev/tests/ui.test.mjs`: o helper `texto()` ignora `<script>` de propósito (as mensagens existem como strings ali e enganariam as esperas).
+- **Cache de 7 dias:** a Hostinger serve CSS/JS com `Cache-Control: max-age=604800`. **Sempre que mudar `ponto.css`, `api.js`, `config.js` ou `admin.js`, troque o `?v=` em TODOS os `<link>`/`<script>` de `pontoeletronico/index.html` e `pontoeletronico/admin/index.html`** (mesma versão nos dois). O teste `dev/tests/assets.test.mjs` falha se faltar ou divergir. Sem isso o navegador de quem já abriu a página mistura CSS antigo com HTML novo (aconteceu em 21/09/2026: o cupom apareceu na tela do balcão).
 - **Não afirmar conformidade com a Portaria 671** em nenhum texto público enquanto não houver INPI + ATTR + ICP-Brasil.
 - **Não publicar** (`git push`) sem o dono pedir. Antes, a chave `anon` precisa estar em `pontoeletronico/config.js`.
 

@@ -51,14 +51,14 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/admin/` | Painel do gestor: funcionários e jornadas, domingos de folga e exceções, correções, relatórios (espelho mensal/PDF, banco de horas, faltas), empresas e estações |
 | `pontoeletronico/api.js`, `config.js`, `ponto.css` | Cliente da API, configuração pública, estilo |
 | `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0007 |
-| `dev/tests/` | 90 testes: regras de apuração, segurança e as telas (jsdom ligado a um Postgres em memória) |
+| `dev/tests/` | 92 testes: regras de apuração, segurança e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 90 testes, ~15 s, não toca no banco real
+npm test                                                                   # 92 testes, ~15 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
 ```
