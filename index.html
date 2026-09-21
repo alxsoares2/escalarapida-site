@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gerador de Escala de Trabalho — Grátis</title>
+<meta name="description" content="Gere escalas de trabalho 5x2, 6x1, 4x3 e 12x36 de forma automática e gratuita. Respeita as leis trabalhistas brasileiras." />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9f9f7;color:#1a1a18}
+.card{background:#fff;border:0.5px solid #D3D1C7;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.card-title{font-size:13px;color:#5F5E5A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px}
+.field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:80px}
+.field label{font-size:13px;color:#5F5E5A}
+.field input,.field select{width:100%;box-sizing:border-box;padding:8px 10px;border:0.5px solid #ccc;border-radius:8px;font-size:14px;background:#fff;color:#1a1a18;outline:none;font-family:inherit}
+.field input:focus,.field select:focus{border-color:#1a1a18;box-shadow:0 0 0 3px rgba(26,26,24,0.08)}
+.tog{padding:6px 12px;font-size:13px;border-radius:8px;cursor:pointer;border:0.5px solid #D3D1C7;background:#fff;color:#1a1a18;font-family:inherit}
+.tog.on{background:#1a1a18;border-color:#1a1a18;color:#fff}
+.toggle-group{display:flex;gap:8px;flex-wrap:wrap}
+.emp-item{background:#f9f9f7;border-radius:8px;padding:10px 12px;margin-bottom:8px;border:0.5px solid #D3D1C7}
+.emp-item:last-child{margin-bottom:0}
+.emp-header{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.emp-name{font-size:14px;font-weight:500;flex:1}
+.badge{font-size:12px;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.bM{background:#E6F1FB;color:#0C447C}.bT{background:#FAEEDA;color:#633806}.bN{background:#EEEDFE;color:#3C3489}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;flex-shrink:0}
+.dM{background:#378ADD}.dT{background:#BA7517}.dN{background:#534AB7}
+.emp-details{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:#5F5E5A;align-items:center}
+.btn-rem{background:none;border:none;cursor:pointer;color:#888780;padding:4px;border-radius:4px}
+.btn-rem:hover{color:#A32D2D}
+.btn-add{padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;border-radius:8px;cursor:pointer;font-family:inherit}
+.btn-gerar{width:100%;padding:12px;font-size:15px;font-weight:500;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;cursor:pointer;background:#1a1a18;color:#fff;border:none;font-family:inherit}
+.btn-gerar:hover{background:#333}
+.btn-row{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
+.btn-sec{padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:6px;border-radius:8px;cursor:pointer;font-family:inherit}
+.regra-row{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid #D3D1C7;gap:12px}
+.regra-row:last-child{border-bottom:none}
+.regra-label{font-size:14px;color:#1a1a18}
+.regra-desc{font-size:12px;color:#888780;margin-top:2px}
+.regra-ctrl{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.num-input{width:56px;text-align:center;padding:6px;border:0.5px solid #ccc;border-radius:6px;font-size:14px;font-family:inherit}
+.hor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.hor-dia{background:#f9f9f7;border-radius:8px;padding:8px 10px;border:0.5px solid #D3D1C7}
+.hor-dia-nome{font-size:12px;font-weight:500;color:#5F5E5A;margin-bottom:6px}
+.hor-dia-row{display:flex;gap:6px;align-items:center}
+.hor-dia-row label{font-size:11px;color:#888780;white-space:nowrap}
+.hor-dia-row input{flex:1;min-width:0;font-size:12px;padding:4px 6px;border:0.5px solid #ccc;border-radius:6px;font-family:inherit}
+.fechado-btn{font-size:11px;padding:3px 8px;margin-top:4px;border-radius:6px;cursor:pointer;font-family:inherit}
+.fechado-btn.on{background:#FCEBEB;border-color:#F09595;color:#A32D2D}
+.pico-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.pico-item{display:flex;gap:8px;align-items:center;background:#f9f9f7;border-radius:8px;padding:6px 10px;border:0.5px solid #D3D1C7}
+.pico-item span{font-size:13px;flex:1}
+.pico-item button{background:none;border:none;cursor:pointer;color:#888780;padding:2px}
+.view-tabs{display:flex;gap:4px;margin-bottom:1rem}
+.view-tab{padding:8px 16px;font-size:13px;border-radius:8px;cursor:pointer;border:0.5px solid #D3D1C7;background:#f9f9f7;color:#888780;font-family:inherit}
+.view-tab.active{background:#fff;border-color:#1a1a18;color:#1a1a18;font-weight:500}
+.dom-card{background:#fff;border:0.5px solid #D3D1C7;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.dom-card-title{font-size:13px;color:#5F5E5A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.dom-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.dom-item{background:#EAF3DE;border:0.5px solid #C0DD97;border-radius:8px;padding:10px 14px}
+.dom-data{font-size:13px;font-weight:500;color:#27500A;margin-bottom:6px}
+.dom-nomes{display:flex;flex-wrap:wrap;gap:6px}
+.dom-nome{font-size:12px;background:#fff;border:0.5px solid #C0DD97;border-radius:4px;padding:2px 8px;color:#27500A}
+.dom-trabalha{font-size:12px;color:#5F5E5A;font-style:italic;margin-top:6px}
+.escala-wrap{margin-top:1rem;overflow-x:auto}
+.escala-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.escala-titulo{font-size:15px;font-weight:500}
+.btn-pdf{padding:7px 14px;font-size:13px;display:flex;align-items:center;gap:6px;border-radius:8px;cursor:pointer;font-family:inherit}
+table.esc{width:100%;border-collapse:collapse;font-size:12px;min-width:600px}
+table.esc th{background:#f9f9f7;padding:7px 8px;text-align:center;font-weight:500;border:0.5px solid #D3D1C7;font-size:12px;color:#5F5E5A;white-space:nowrap}
+table.esc th.ec{text-align:left;min-width:140px}
+table.esc td{padding:6px 8px;border:0.5px solid #D3D1C7;text-align:center;vertical-align:middle;line-height:1.5}
+table.esc td.ec{text-align:left;font-weight:500;white-space:nowrap;font-size:13px}
+table.esc td.tf{background:#f9f9f7;color:#888780;font-style:italic;font-size:11px}
+table.esc td.dom-folga{background:#EAF3DE;color:#27500A;font-size:11px;font-style:italic}
+table.esc td.fechado{background:#f9f9f7;color:#888780;font-size:11px;opacity:0.6}
+table.esc td.totalizador{text-align:left;padding:6px 10px;background:#f9f9f7}
+table.esc td.semana-header{background:#f1efe8;font-weight:500;font-size:12px;color:#5F5E5A;text-align:left;padding:6px 10px}
+table.esc tr:hover td{background:#f9f9f7}
+.h-entrada{font-size:12px;font-weight:500;color:#1a1a18}
+.h-int{font-size:10px;color:#888780;margin-top:2px;padding:1px 5px;background:#f9f9f7;border-radius:3px;display:inline-block}
+.h-devidas{font-size:10px;color:#A32D2D;margin-top:2px;display:block;font-weight:500}
+.h-pico{font-size:10px;color:#BA7517;margin-top:1px;display:block}
+.saldo-ok{font-size:12px;color:#27500A;font-weight:500}
+.saldo-negativo{font-size:12px;color:#A32D2D;font-weight:500}
+.aviso{background:#FAEEDA;border:0.5px solid #EF9F27;border-radius:8px;padding:10px 14px;font-size:13px;color:#633806;margin-bottom:1rem;display:flex;align-items:flex-start;gap:8px}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:#888780}
+.leg-item{display:flex;align-items:center;gap:5px}
+.int-badge{font-size:10px;background:#E6F1FB;color:#0C447C;padding:1px 5px;border-radius:3px;display:inline-block}
+.fds-badge{font-size:10px;background:#FAEEDA;color:#633806;padding:1px 5px;border-radius:3px;display:inline-block}
+.cargo-badge{font-size:10px;background:#f9f9f7;color:#5F5E5A;padding:1px 5px;border-radius:3px;display:inline-block;border:0.5px solid #D3D1C7}
+.toast{position:fixed;bottom:20px;right:20px;background:#27500A;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:999;display:none;font-family:inherit}
+.container{max-width:860px;margin:0 auto;padding:1.5rem 1rem}
+header{background:#fff;border-bottom:0.5px solid #D3D1C7;padding:0 1.5rem;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:17px;font-weight:600;color:#1a1a18;display:flex;align-items:center;gap:6px;text-decoration:none}
+.logo span{color:#378ADD}
+.header-sub{font-size:13px;color:#888780}
+@media(max-width:600px){
+  .hor-grid{grid-template-columns:repeat(2,1fr)}
+  .dom-grid{grid-template-columns:1fr}
+  .row{flex-direction:column}
+  .field{min-width:100%}
+  .btn-add{width:100%;justify-content:center}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><i class="ti ti-calendar-stats"></i> Escala<span>Rápida</span></div>
+  <div class="header-sub">Gerador de escala gratuito · CLT</div>
+</header>
+
+<div class="container">
+
+<div class="btn-row">
+  <button class="btn-sec tog" onclick="salvarConfig()"><i class="ti ti-download"></i> Salvar configuração</button>
+  <label class="btn-sec tog" style="cursor:pointer"><i class="ti ti-upload"></i> Carregar configuração<input type="file" id="file-input" accept=".json" style="display:none" onchange="carregarConfig(event)"/></label>
+</div>
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-building"></i> Estabelecimento</div>
+  <div class="row" style="margin-bottom:0">
+    <div class="field"><label>Nome do estabelecimento</label><input type="text" id="nome-estab" placeholder="Ex: Restaurante Sabor & Arte"/></div>
+    <div class="field" style="max-width:140px"><label>Mês de referência</label>
+      <select id="mes-ref">
+        <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+        <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+        <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+        <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+      </select>
+    </div>
+    <div class="field" style="max-width:90px"><label>Ano</label><input type="number" id="ano-ref" value="2025" min="2024" max="2035"/></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-clock"></i> Horário de funcionamento por dia</div>
+  <div style="font-size:13px;color:#888780;margin-bottom:10px">Horário de atendimento ao público. Funcionários podem chegar antes — a saída é limitada pelo fechamento.</div>
+  <div class="hor-grid" id="hor-grid"></div>
+</div>
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-flame"></i> Horários de pico</div>
+  <div style="font-size:13px;color:#888780;margin-bottom:10px">Intervalos são antecipados para evitar estes períodos — respeitando 6h corridas da CLT.</div>
+  <div class="row" style="margin-bottom:6px">
+    <div class="field" style="max-width:120px"><label>Início</label><input type="time" id="pico-inicio" value="12:00"/></div>
+    <div class="field" style="max-width:120px"><label>Fim</label><input type="time" id="pico-fim" value="14:00"/></div>
+    <button class="btn-add" onclick="addPico()"><i class="ti ti-plus"></i> Adicionar</button>
+  </div>
+  <div class="pico-list" id="pico-list"><div style="font-size:13px;color:#888780">Nenhum horário de pico definido.</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-adjustments"></i> Regras gerais</div>
+  <div class="regra-row">
+    <div><div class="regra-label">Mínimo na operação durante intervalo</div><div class="regra-desc">Garante cobertura enquanto parte da equipe está em intervalo</div></div>
+    <div class="regra-ctrl"><input type="number" class="num-input" id="min-cob" value="1" min="0" max="20"/><span style="font-size:13px;color:#888780">pessoa(s)</span></div>
+  </div>
+  <div class="regra-row">
+    <div><div class="regra-label">Distribuir folgas automaticamente</div><div class="regra-desc">Evita que todos folguem no mesmo dia da semana</div></div>
+    <div class="regra-ctrl"><button class="tog on" id="btn-dist" onclick="toggleDist()">Ativado</button></div>
+  </div>
+  <div class="regra-row">
+    <div><div class="regra-label">Mínimo de pessoas presentes por dia</div><div class="regra-desc">Alerta se algum dia ficar abaixo deste número</div></div>
+    <div class="regra-ctrl"><input type="number" class="num-input" id="min-dia" value="1" min="0" max="50"/><span style="font-size:13px;color:#888780">pessoa(s)</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><i class="ti ti-users"></i> Funcionários</div>
+  <div id="emp-list"><div style="font-size:13px;color:#888780;padding:4px 0">Nenhum funcionário adicionado ainda.</div></div>
+  <div style="border-top:0.5px solid #D3D1C7;padding-top:12px;margin-top:4px">
+    <div style="font-size:13px;color:#888780;margin-bottom:8px">Adicionar funcionário</div>
+    <div class="row" style="margin-bottom:8px">
+      <div class="field"><label>Nome</label><input type="text" id="novo-nome" placeholder="Ex: João Silva" onkeydown="if(event.key==='Enter')addEmp()"/></div>
+      <div class="field" style="max-width:140px"><label>Cargo / Função</label><input type="text" id="novo-cargo" placeholder="Ex: Gerente"/></div>
+      <div class="field" style="max-width:110px"><label>Entrada</label><input type="time" id="novo-hora" value="08:00"/></div>
+    </div>
+    <div class="row" style="margin-bottom:0">
+      <div class="field"><label>Tipo de escala</label>
+        <select id="novo-tipo">
+          <option value="5x2">5x2 — 5 dias, 2 folga</option>
+          <option value="6x1">6x1 — 6 dias, 1 folga</option>
+          <option value="4x3">4x3 — 4 dias, 3 folga</option>
+          <option value="12x36">12x36 — 12h, 36h folga</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:100px"><label>Intervalo</label>
+        <select id="novo-int"><option value="1">1 hora</option><option value="2">2 horas</option></select>
+      </div>
+      <div class="field" style="max-width:120px"><label>Trabalha FDS?</label>
+        <select id="novo-fds"><option value="nao">Não</option><option value="sim">Sim</option></select>
+      </div>
+      <button class="btn-add" onclick="addEmp()"><i class="ti ti-plus"></i> Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<div class="view-tabs">
+  <button class="view-tab active" id="tab-sem" onclick="setView('semanal')"><i class="ti ti-calendar-week"></i> Semanal</button>
+  <button class="view-tab" id="tab-men" onclick="setView('mensal')"><i class="ti ti-calendar-month"></i> Mensal</button>
+</div>
+
+<div class="field" id="semana-field" style="max-width:180px;margin-bottom:1rem">
+  <label>Semana de início</label>
+  <input type="date" id="data-inicio"/>
+</div>
+
+<button class="btn-gerar" onclick="gerar()"><i class="ti ti-table"></i> Gerar escala</button>
+<div id="output" style="margin-top:1rem"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let emps=[],distFolga=true,picos=[],viewMode='semanal';
+const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MESES_NOME=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MESES_ABR=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MAX6H=360;
+let horFunc=Array(7).fill(null).map(()=>({ab:'08:00',fe:'22:00',fechado:false}));
+const hoje=new Date();
+const dow=hoje.getDay();
+const seg=new Date(hoje);
+seg.setDate(hoje.getDate()-(dow===0?6:dow-1));
+document.getElementById('data-inicio').valueAsDate=seg;
+document.getElementById('mes-ref').value=hoje.getMonth();
+document.getElementById('ano-ref').value=hoje.getFullYear();
+
+function setView(v){viewMode=v;document.getElementById('tab-sem').classList.toggle('active',v==='semanal');document.getElementById('tab-men').classList.toggle('active',v==='mensal');document.getElementById('semana-field').style.display=v==='semanal'?'':'none';}
+function toMin(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
+function fromMin(m){const mm=((m%1440)+1440)%1440;return`${String(Math.floor(mm/60)).padStart(2,'0')}:${String(mm%60).padStart(2,'0')}`;}
+function fmtHoras(min){const h=Math.floor(Math.abs(min)/60);const m=Math.abs(min)%60;return m>0?`${h}h${String(m).padStart(2,'0')}min`:`${h}h`;}
+function getTurno(hora){const h=parseInt(hora.split(':')[0]);return h>=5&&h<12?'M':h>=12&&h<18?'T':'N';}
+function getTurnoLabel(t){return t==='M'?'Manhã':t==='T'?'Tarde':'Noite';}
+function getTurnoBg(t){return t==='M'?'#E6F1FB40':t==='T'?'#FAEEDA40':'#EEEDFE40';}
+function getTurnoBorder(t){return t==='M'?'#B5D4F4':t==='T'?'#FAC775':'#CECBF6';}
+function toggleDist(){distFolga=!distFolga;document.getElementById('btn-dist').textContent=distFolga?'Ativado':'Desativado';document.getElementById('btn-dist').classList.toggle('on',distFolga);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function diaAbs(dt){return Math.floor(Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate())/86400000);}
+function folga12x36(idx,dt){return diaAbs(dt)%2!==idx%2;}
+const HHMM=/^([01]\d|2[0-3]):[0-5]\d$/;
+function hhmmOu(v,padrao){return typeof v==='string'&&HHMM.test(v)?v:padrao;}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2500);}
+
+function salvarConfig(){
+  const cfg={nomeEstab:document.getElementById('nome-estab').value,mes:document.getElementById('mes-ref').value,ano:document.getElementById('ano-ref').value,horFunc,picos,emps,distFolga,minCob:document.getElementById('min-cob').value,minDia:document.getElementById('min-dia').value};
+  const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  const nome=document.getElementById('nome-estab').value||'escala';
+  a.download=`${nome.replace(/\s+/g,'-').toLowerCase()}-config.json`;
+  a.click();showToast('✓ Configuração salva!');
+}
+function carregarConfig(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const cfg=JSON.parse(ev.target.result);
+      // O arquivo vem do usuário: cada campo é validado/convertido antes de entrar no estado, pois é usado em HTML e em atributos onclick.
+      const inteiro=(v,min,max)=>{const n=parseInt(v);return Number.isInteger(n)&&n>=min&&n<=max?n:null;};
+      if(typeof cfg.nomeEstab==='string')document.getElementById('nome-estab').value=cfg.nomeEstab;
+      const mes=inteiro(cfg.mes,0,11);if(mes!==null)document.getElementById('mes-ref').value=mes;
+      const ano=inteiro(cfg.ano,2024,2035);if(ano!==null)document.getElementById('ano-ref').value=ano;
+      if(Array.isArray(cfg.horFunc)&&cfg.horFunc.length===7)horFunc=cfg.horFunc.map(h=>({ab:hhmmOu(h&&h.ab,'08:00'),fe:hhmmOu(h&&h.fe,'22:00'),fechado:!!(h&&h.fechado)}));
+      if(Array.isArray(cfg.picos))picos=cfg.picos.filter(p=>p&&HHMM.test(p.ini)&&HHMM.test(p.fim)).map((p,i)=>({ini:p.ini,fim:p.fim,id:Date.now()+i}));
+      if(Array.isArray(cfg.emps))emps=cfg.emps.filter(e=>e&&typeof e.nome==='string'&&e.nome.trim()&&HHMM.test(e.hora)&&['5x2','6x1','4x3','12x36'].includes(e.tipo)).map((e,i)=>({nome:e.nome,cargo:typeof e.cargo==='string'?e.cargo:'',hora:e.hora,tipo:e.tipo,intervalo:e.intervalo===2?2:1,fds:e.fds===true,turno:getTurno(e.hora),id:Date.now()+i}));
+      if(typeof cfg.distFolga==='boolean'){distFolga=cfg.distFolga;document.getElementById('btn-dist').textContent=distFolga?'Ativado':'Desativado';document.getElementById('btn-dist').classList.toggle('on',distFolga);}
+      const minCob=inteiro(cfg.minCob,0,20);if(minCob!==null)document.getElementById('min-cob').value=minCob;
+      const minDia=inteiro(cfg.minDia,0,50);if(minDia!==null)document.getElementById('min-dia').value=minDia;
+      renderHorFunc();renderEmps();renderPicos();showToast('✓ Configuração carregada!');
+    }catch(err){showToast('Erro ao carregar arquivo.');}
+  };
+  reader.readAsText(file);
+}
+
+function renderHorFunc(){
+  document.getElementById('hor-grid').innerHTML=DIAS.map((d,i)=>`
+    <div class="hor-dia">
+      <div class="hor-dia-nome">${d}</div>
+      <div class="hor-dia-row"><label>Abre</label><input type="time" value="${horFunc[i].ab}" onchange="horFunc[${i}].ab=this.value" ${horFunc[i].fechado?'disabled':''}/></div>
+      <div class="hor-dia-row" style="margin-top:4px"><label>Fecha</label><input type="time" value="${horFunc[i].fe}" onchange="horFunc[${i}].fe=this.value" ${horFunc[i].fechado?'disabled':''}/></div>
+      <button class="tog fechado-btn ${horFunc[i].fechado?'on':''}" onclick="toggleFechado(${i})">${horFunc[i].fechado?'Fechado':'Aberto'}</button>
+    </div>`).join('');
+}
+function toggleFechado(i){horFunc[i].fechado=!horFunc[i].fechado;renderHorFunc();}
+
+function addPico(){const ini=document.getElementById('pico-inicio').value,fim=document.getElementById('pico-fim').value;if(!ini||!fim)return;picos.push({ini,fim,id:Date.now()});renderPicos();}
+function removePico(id){picos=picos.filter(p=>p.id!==id);renderPicos();}
+function renderPicos(){
+  const el=document.getElementById('pico-list');
+  if(!picos.length){el.innerHTML='<div style="font-size:13px;color:#888780">Nenhum horário de pico definido.</div>';return;}
+  el.innerHTML=picos.map(p=>`<div class="pico-item"><i class="ti ti-flame" style="color:#BA7517"></i><span>${p.ini} – ${p.fim}</span><button onclick="removePico(${p.id})"><i class="ti ti-x"></i></button></div>`).join('');
+}
+
+function addEmp(){
+  const nome=document.getElementById('novo-nome').value.trim();if(!nome)return;
+  const hora=document.getElementById('novo-hora').value;
+  emps.push({nome,cargo:document.getElementById('novo-cargo').value.trim(),hora,tipo:document.getElementById('novo-tipo').value,intervalo:parseInt(document.getElementById('novo-int').value),fds:document.getElementById('novo-fds').value==='sim',turno:getTurno(hora),id:Date.now()});
+  document.getElementById('novo-nome').value='';document.getElementById('novo-cargo').value='';
+  renderEmps();
+}
+function removeEmp(id){emps=emps.filter(e=>e.id!==id);renderEmps();}
+function renderEmps(){
+  const el=document.getElementById('emp-list');
+  if(!emps.length){el.innerHTML='<div style="font-size:13px;color:#888780;padding:4px 0">Nenhum funcionário adicionado ainda.</div>';return;}
+  el.innerHTML=emps.map(e=>`
+    <div class="emp-item">
+      <div class="emp-header"><span class="dot d${e.turno}"></span><span class="emp-name">${esc(e.nome)}</span>
+        <button class="btn-rem" onclick="removeEmp(${e.id})"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="emp-details">
+        ${e.cargo?`<span class="cargo-badge"><i class="ti ti-briefcase"></i> ${esc(e.cargo)}</span>`:''}
+        <span><i class="ti ti-clock"></i> ${getTurnoLabel(e.turno)} · ${e.hora}</span>
+        <span class="badge b${e.turno}">${e.tipo}</span>
+        <span class="int-badge">${e.intervalo}h</span>
+        ${e.fds?'<span class="fds-badge">FDS</span>':''}
+      </div>
+    </div>`).join('');
+}
+
+function estaNoPico(min){const n=min%1440;return picos.some(p=>n>=toMin(p.ini)&&n<toMin(p.fim));}
+function calcIntervaloMin(entMin,jornadaH,intervaloH){
+  let intBase=entMin+(jornadaH/2)*60;const maxSemInt=entMin+MAX6H;let intInicio=intBase;
+  if(estaNoPico(intInicio)){for(const p of picos){let ant=toMin(p.ini)-intervaloH*60;if(ant<entMin)ant+=1440;if(ant>=entMin+60&&ant<=maxSemInt){intInicio=ant;break;}}}
+  if(intInicio>maxSemInt)intInicio=maxSemInt;return intInicio;
+}
+function calcSaida(entMin,jornadaH,intervaloH,feStr){
+  const saidaNormal=entMin+jornadaH*60+intervaloH*60;
+  const feMin=toMin(feStr);let feLinear=feMin;
+  if(feMin<=entMin)feLinear=feMin+1440;
+  if(saidaNormal>feLinear)return{min:feLinear,encurtado:true,horasDevidas:saidaNormal-feLinear};
+  return{min:saidaNormal,encurtado:false,horasDevidas:0};
+}
+function calcDomingosMes(mes,ano,empsFds){
+  const domingos=[];const d=new Date(ano,mes,1);
+  while(d.getDay()!==0)d.setDate(d.getDate()+1);
+  while(d.getMonth()===mes){domingos.push(new Date(d));d.setDate(d.getDate()+7);}
+  return domingos.map((dom,i)=>{
+    const folgas=[],trabalham=[];
+    empsFds.forEach((e,j)=>j%domingos.length===i?folgas.push(e.nome):trabalham.push(e.nome));
+    return{data:dom,folgas,trabalham};
+  });
+}
+function calcFolgasEmp(emp,idx){
+  const{tipo,fds}=emp;const folgas=[];
+  if(tipo==='5x2'){if(!fds){folgas.push(0,6);}else if(distFolga){const op=[1,2,3,4,5];folgas.push(op[idx%5],op[(idx+2)%5]);}}
+  else if(tipo==='6x1'){if(!fds)folgas.push(0);else{const op=[1,2,3,4,5,6,0];folgas.push(op[idx%7]);}}
+  else if(tipo==='4x3'){[[0,5,6],[1,5,6],[0,1,6],[0,1,2],[2,5,6],[3,5,6]][idx%6].forEach(f=>folgas.push(f));}
+  // 12x36 não usa dia da semana: a alternância é por data corrente (ver folga12x36), para não reiniciar a cada semana.
+  return folgas;
+}
+function gerarSemana(diasArr,mes,ano,domingosMes){
+  const minCob=parseInt(document.getElementById('min-cob').value)||0;
+  const minDia=parseInt(document.getElementById('min-dia').value)||0;
+  const avisos=[];
+  const empsFds=emps.filter(e=>e.fds&&(e.tipo==='5x2'||e.tipo==='6x1'));
+  const domingoSemana=diasArr.find(d=>d.dow===0);
+  const folgaDomSemana=new Set();
+  if(domingoSemana&&domingosMes){
+    domingosMes.forEach(r=>{
+      if(r.data.getDate()===domingoSemana.dt.getDate()&&r.data.getMonth()===domingoSemana.dt.getMonth())
+        r.folgas.forEach(n=>folgaDomSemana.add(n));
+    });
+  }
+  const cells={};const horasDevidasTotal={};
+  emps.forEach(e=>horasDevidasTotal[e.id]=0);
+  emps.forEach((emp,idx)=>{
+    cells[emp.id]={};
+    const folgasDow=calcFolgasEmp(emp,idx);
+    const jornada=emp.tipo==='12x36'?12:8;
+    diasArr.forEach(d=>{
+      const hf=horFunc[d.dow];
+      const isFolga=emp.tipo==='12x36'?folga12x36(idx,d.dt):folgasDow.includes(d.dow);
+      const isDomObrig=d.dow===0&&emp.fds&&folgaDomSemana.has(emp.nome)&&!isFolga;
+      cells[emp.id][d.idx]={folga:isFolga||hf.fechado||isDomObrig,fechado:hf.fechado,domObrig:isDomObrig,jornada,horasDevidas:0};
+    });
+  });
+  diasArr.forEach(d=>{
+    const hf=horFunc[d.dow];if(hf.fechado)return;
+    const trab=emps.filter(e=>!cells[e.id][d.idx].folga);
+    if(trab.length>0&&trab.length<minDia)avisos.push(`${DIAS[d.dow]} ${d.dt.getDate()}/${d.dt.getMonth()+1}: apenas ${trab.length} pessoa(s).`);
+    ['M','T','N'].forEach(turno=>{
+      const grupo=trab.filter(e=>e.turno===turno);if(!grupo.length)return;
+      const sorted=[...grupo].sort((a,b)=>toMin(a.hora)-toMin(b.hora));
+      const grupoSize=Math.max(1,sorted.length-Math.max(0,minCob));
+      sorted.forEach((e,i)=>{
+        const jornada=cells[e.id][d.idx].jornada;const entMin=toMin(e.hora);
+        const base=calcIntervaloMin(entMin,jornada,e.intervalo);
+        const grp=Math.floor(i/grupoSize);
+        const intStart=base+grp*e.intervalo*60;
+        const{min:saidaMin,encurtado,horasDevidas}=calcSaida(entMin,jornada,e.intervalo,hf.fe);
+        cells[e.id][d.idx].intInicio=intStart;cells[e.id][d.idx].saidaMin=saidaMin;
+        cells[e.id][d.idx].encurtado=encurtado;cells[e.id][d.idx].horasDevidas=horasDevidas;
+        if(horasDevidas>0)horasDevidasTotal[e.id]+=horasDevidas;
+      });
+    });
+  });
+  return{cells,horasDevidasTotal,avisos};
+}
+function renderTabelaSemana(diasArr,cells,horasDevidasTotal,label){
+  let html=`<table class="esc"><thead><tr><th class="ec">Funcionário</th>`;
+  diasArr.forEach(d=>{
+    const hf=horFunc[d.dow];
+    html+=`<th style="${hf.fechado?'opacity:0.4':''}">${DIAS[d.dow]}<br><span style="font-weight:400;font-size:11px">${d.dt.getDate()} ${MESES_ABR[d.dt.getMonth()]}${hf.fechado?'<br><span style="color:#A32D2D">Fec.</span>':''}</span></th>`;
+  });
+  html+=`<th>Horas devidas<br><span style="font-weight:400;font-size:11px">na semana</span></th></tr></thead><tbody>`;
+  if(label)html+=`<tr><td class="semana-header" colspan="${diasArr.length+2}">${label}</td></tr>`;
+  emps.forEach(emp=>{
+    const t=emp.turno;
+    html+=`<tr><td class="ec"><span class="dot d${t}"></span>${esc(emp.nome)}<br>
+      <span style="font-size:11px;color:#888780">${esc(emp.cargo)||getTurnoLabel(t)} · ${emp.hora}</span><br>
+      <span class="badge b${t}" style="font-size:10px">${emp.tipo}</span>
+      <span class="int-badge">${emp.intervalo}h</span>
+      ${emp.fds?'<span class="fds-badge">FDS</span>':''}
+    </td>`;
+    diasArr.forEach(d=>{
+      const c=cells[emp.id][d.idx];const hf=horFunc[d.dow];
+      if(hf.fechado){html+=`<td class="fechado">—</td>`;}
+      else if(c.domObrig){html+=`<td class="dom-folga">Folga<br><span style="font-size:10px">Dom. obrig.</span></td>`;}
+      else if(c.folga){html+=`<td class="tf">Folga</td>`;}
+      else{
+        const entMin=toMin(emp.hora);
+        const intInicioLinear=c.intInicio!==undefined?c.intInicio:calcIntervaloMin(entMin,c.jornada,emp.intervalo);
+        const intFimLinear=intInicioLinear+emp.intervalo*60;
+        const saidaStr=c.saidaMin!==undefined?fromMin(c.saidaMin):fromMin(calcSaida(entMin,c.jornada,emp.intervalo,hf.fe).min);
+        const noPico=picos.length&&estaNoPico(intInicioLinear);
+        html+=`<td style="background:${getTurnoBg(t)};border-left:2px solid ${getTurnoBorder(t)}">
+          <div class="h-entrada">${emp.hora} – ${saidaStr}</div>
+          <div class="h-int">Intervalo ${fromMin(intInicioLinear)}–${fromMin(intFimLinear)}</div>
+          ${c.horasDevidas>0?`<span class="h-devidas"><i class="ti ti-clock-minus"></i> ${fmtHoras(c.horasDevidas)}</span>`:''}
+          ${noPico?`<span class="h-pico"><i class="ti ti-flame"></i> Pico</span>`:''}
+        </td>`;
+      }
+    });
+    const total=horasDevidasTotal[emp.id];
+    html+=`<td class="totalizador">${total>0?`<span class="saldo-negativo"><i class="ti ti-clock-minus"></i> ${fmtHoras(total)}</span>`:`<span class="saldo-ok"><i class="ti ti-check"></i> Ok</span>`}</td></tr>`;
+  });
+  html+=`</tbody></table>`;return html;
+}
+function gerar(){
+  if(!emps.length){document.getElementById('output').innerHTML='<div style="text-align:center;padding:2rem;color:#888780">Adicione pelo menos um funcionário.</div>';return;}
+  const mes=parseInt(document.getElementById('mes-ref').value);
+  const ano=parseInt(document.getElementById('ano-ref').value);
+  const nomeEstab=esc(document.getElementById('nome-estab').value||'Escala de Trabalho');
+  const empsFds=emps.filter(e=>e.fds&&(e.tipo==='5x2'||e.tipo==='6x1'));
+  const domingosMes=empsFds.length?calcDomingosMes(mes,ano,empsFds):[];
+  let html='';
+  if(empsFds.length&&domingosMes.length){
+    html+=`<div class="dom-card"><div class="dom-card-title"><i class="ti ti-calendar"></i> Domingos de folga — ${MESES_NOME[mes]} ${ano}</div><div class="dom-grid">`;
+    domingosMes.forEach(r=>{
+      const dia=String(r.data.getDate()).padStart(2,'0');const m2=String(r.data.getMonth()+1).padStart(2,'0');
+      html+=`<div class="dom-item"><div class="dom-data"><i class="ti ti-calendar-off"></i> ${dia}/${m2} — domingo</div>
+        <div style="font-size:12px;color:#27500A;margin-bottom:4px">Folga:</div>
+        <div class="dom-nomes">${r.folgas.map(n=>`<span class="dom-nome">${esc(n)}</span>`).join('')}</div>
+        ${r.trabalham.length?`<div class="dom-trabalha">Trabalham: ${r.trabalham.map(esc).join(', ')}</div>`:''}
+      </div>`;
+    });
+    html+=`</div></div>`;
+  }
+  html+=`<div class="escala-wrap">
+  <div class="escala-top">
+    <div class="escala-titulo"><i class="ti ti-table"></i> ${nomeEstab} — ${viewMode==='mensal'?MESES_NOME[mes]+' ':''} ${ano}</div>
+    <button class="btn-pdf tog" onclick="exportPDF()"><i class="ti ti-download"></i> Exportar PDF</button>
+  </div>
+  <div class="legenda">
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#E6F1FB;border:0.5px solid #B5D4F4;border-radius:2px"></span>Manhã</span>
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#FAEEDA;border:0.5px solid #FAC775;border-radius:2px"></span>Tarde</span>
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#EEEDFE;border:0.5px solid #CECBF6;border-radius:2px"></span>Noite</span>
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#f9f9f7;border:0.5px solid #D3D1C7;border-radius:2px"></span>Folga</span>
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#EAF3DE;border:0.5px solid #C0DD97;border-radius:2px"></span>Dom. obrig.</span>
+  </div>`;
+  if(viewMode==='semanal'){
+    const dataInicio=new Date(document.getElementById('data-inicio').value+'T12:00:00');
+    const semStart=new Date(dataInicio);semStart.setDate(dataInicio.getDate()-dataInicio.getDay());
+    const dias=Array.from({length:7},(_,d)=>{const dt=new Date(semStart);dt.setDate(semStart.getDate()+d);return{dt,dow:dt.getDay(),idx:d};});
+    const{cells,horasDevidasTotal,avisos}=gerarSemana(dias,mes,ano,domingosMes);
+    if(avisos.length)html=`<div class="aviso"><i class="ti ti-alert-triangle"></i><div>${[...new Set(avisos)].map(a=>`• ${a}`).join('<br>')}</div></div>`+html;
+    html+=renderTabelaSemana(dias,cells,horasDevidasTotal,null);
+  } else {
+    const primeiroDia=new Date(ano,mes,1);
+    const primeiroDom=new Date(primeiroDia);primeiroDom.setDate(primeiroDia.getDate()-primeiroDia.getDay());
+    let semAtual=new Date(primeiroDom);let semIdx=0;const todasAvisos=[];
+    while(semIdx<6){
+      const dias=Array.from({length:7},(_,d)=>{const dt=new Date(semAtual);dt.setDate(semAtual.getDate()+d);return{dt,dow:dt.getDay(),idx:d};});
+      const dentroDoMes=dias.some(d=>d.dt.getMonth()===mes);
+      if(!dentroDoMes&&semIdx>0)break;
+      const label=`Semana ${semIdx+1} — ${dias[1].dt.getDate()} a ${dias[6].dt.getDate()} de ${MESES_NOME[dias[3].dt.getMonth()]}`;
+      const{cells,horasDevidasTotal,avisos}=gerarSemana(dias,mes,ano,domingosMes);
+      todasAvisos.push(...avisos);
+      html+=renderTabelaSemana(dias,cells,horasDevidasTotal,label);
+      html+=`<div style="height:1rem"></div>`;
+      semAtual.setDate(semAtual.getDate()+7);semIdx++;
+    }
+    if(todasAvisos.length){const uniq=[...new Set(todasAvisos)];html=`<div class="aviso"><i class="ti ti-alert-triangle"></i><div>${uniq.map(a=>`• ${a}`).join('<br>')}</div></div>`+html;}
+  }
+  html+=`</div>`;
+  document.getElementById('output').innerHTML=html;
+}
+function exportPDF(){
+  const nomeEstab=esc(document.getElementById('nome-estab').value||'Escala');
+  const mes=parseInt(document.getElementById('mes-ref').value);
+  const ano=parseInt(document.getElementById('ano-ref').value)||'';
+  const conteudo=document.getElementById('output').innerHTML;
+  const janela=window.open('','_blank');
+  janela.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${nomeEstab} — Escala ${MESES_NOME[mes]} ${ano}</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:20px;font-size:11px;color:#1a1a18}
+  h1{font-size:16px;font-weight:600;margin-bottom:4px}.subtitulo{font-size:12px;color:#888;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:16px}
+  th{background:#f9f9f7;padding:6px 8px;text-align:center;border:0.5px solid #ccc;font-size:10px}th.ec{text-align:left}
+  td{padding:5px 7px;border:0.5px solid #ccc;text-align:center;vertical-align:middle;line-height:1.4}td.ec{text-align:left;font-weight:600}
+  td.tf{background:#f5f5f5;color:#888;font-style:italic}td.dom-folga{background:#EAF3DE;color:#27500A;font-style:italic}
+  td.fechado{background:#f5f5f5;color:#888}td.totalizador{background:#f5f5f5;text-align:left}
+  td.semana-header{background:#e8e6df;font-weight:600;text-align:left;padding:5px 8px}
+  .h-entrada{font-size:10px;font-weight:600}.h-int{font-size:9px;color:#666;display:block;margin-top:1px}
+  .h-devidas{font-size:9px;color:#A32D2D;font-weight:600;display:block}
+  .saldo-ok{color:#27500A;font-size:10px;font-weight:600}.saldo-negativo{color:#A32D2D;font-size:10px;font-weight:600}
+  .dom-card{border:0.5px solid #C0DD97;border-radius:6px;padding:12px;margin-bottom:16px;background:#EAF3DE}
+  .dom-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .dom-item{background:#fff;border:0.5px solid #C0DD97;border-radius:4px;padding:8px}
+  .dom-data{font-size:10px;font-weight:600;color:#27500A;margin-bottom:4px}
+  .dom-nome{font-size:10px;display:inline-block;background:#EAF3DE;border-radius:3px;padding:1px 6px;margin:1px;color:#27500A}
+  .dom-trabalha{font-size:9px;color:#666;margin-top:4px;font-style:italic}
+  .legenda{display:flex;gap:12px;margin-bottom:10px;font-size:9px;color:#666;flex-wrap:wrap}
+  .escala-titulo{font-size:13px;font-weight:600;margin-bottom:8px}
+  @media print{body{padding:10px}@page{margin:10mm}}</style>
+  </head><body><h1>${nomeEstab}</h1><div class="subtitulo">Escala de Trabalho — ${MESES_NOME[mes]} ${ano}</div>
+  ${conteudo}<script>window.onload=()=>window.print()<\/script></body></html>`);
+  janela.document.close();
+}
+renderHorFunc();renderEmps();renderPicos();
+</script>
+</body>
+</html>
