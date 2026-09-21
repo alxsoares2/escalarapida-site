@@ -1,0 +1,4 @@
+# Documentação interna do projeto não deve ser pública
+<FilesMatch "\.(md)$">
+  Require all denied
+</FilesMatch>
