@@ -13,7 +13,19 @@ Gerador de escala de trabalho (CLT), site de página única em https://www.escal
 - **Ao concluir uma mudança**, atualizar a tabela "Histórico" e as "Pendências" do README.
 - Idioma da interface e dos textos: português do Brasil.
 
-## Mapa rápido do código
+## Ponto eletrônico (`/pontoeletronico`)
+
+Sistema separado do gerador de escala. Especificação em `docs/ponto/ESPECIFICACAO.md`; visão geral e operação no README. Regras de trabalho:
+
+- **Mudou regra de apuração?** Muda a especificação primeiro, depois a migration **nova** (nunca editar migration já aplicada), depois o teste. `cd dev && npm test` precisa ficar verde (83 testes).
+- **Migrations:** `node --env-file=../../marcus-assistente/.env db/migrate.mjs` (no `dev/`). O banco é o **compartilhado** com Saas Financeiro e Marcus: só mexer no schema `ponto` e em `public.ponto_rpc`. Nunca imprimir `DATABASE_URL` nem chaves.
+- **Segurança da API:** o frontend só chama `public.ponto_rpc`. Função nova de API = `ponto.api_<nome>(jsonb)` que se autentica sozinha (token de estação + PIN, ou sessão de admin). Tabelas novas: ligar RLS e revogar de `anon`/`authenticated`. `service_role` nunca no frontend.
+- **Marcação é imutável:** nada de UPDATE/DELETE em `marcacao`. Correção = `ajuste` (acrescenta/desconsidera) com motivo. O relógio vem só de `ponto.agora()`.
+- **Frontend:** todo texto do usuário em `innerHTML` passa por `Ponto.esc()`. Testes de tela em `dev/tests/ui.test.mjs`: o helper `texto()` ignora `<script>` de propósito (as mensagens existem como strings ali e enganariam as esperas).
+- **Não afirmar conformidade com a Portaria 671** em nenhum texto público enquanto não houver INPI + ATTR + ICP-Brasil.
+- **Não publicar** (`git push`) sem o dono pedir. Antes, a chave `anon` precisa estar em `pontoeletronico/config.js`.
+
+## Mapa rápido do código (gerador de escala)
 
 Estado global: `emps`, `picos`, `horFunc[7]`, `distFolga`, `viewMode`. Entrada principal: `gerar()` → `gerarSemana()` → `renderTabelaSemana()`. Regras de folga em `calcFolgasEmp()`, domingos em `calcDomingosMes()`, intervalo em `calcIntervaloMin()`, saída em `calcSaida()`.
 

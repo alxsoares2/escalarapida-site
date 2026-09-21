@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Ponto — Marcação</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+<link rel="stylesheet" href="ponto.css" />
+</head>
+<body class="estacao">
+
+<header class="topo">
+  <div class="logo"><i class="ti ti-clock-check"></i> Ponto<span>Eletrônico</span></div>
+  <div class="sub" id="topo-empresa"></div>
+</header>
+
+<div class="est-topo" id="bloco-relogio" hidden>
+  <div class="est-empresa" id="est-empresa"></div>
+  <div class="est-relogio" id="relogio">--:--:--</div>
+  <div class="est-data" id="data"></div>
+</div>
+
+<main class="est-corpo" id="corpo"></main>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+(function () {
+  const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
+  const $ = (id) => document.getElementById(id);
+  const corpo = $('corpo');
+  const TOKEN_KEY = 'ponto_estacao_token';
+
+  let token = null, info = null, offset = 0;
+  let sel = null;            // funcionário escolhido {id, nome}
+  let pin = '';              // só em memória, apagado ao sair da tela
+  let estado = null;         // resposta de "estado" (proximos, ultimas)
+  let ocioso = null, volta = null;
+
+  const guardar = { get: () => { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } },
+                    set: (v) => { try { v ? localStorage.setItem(TOKEN_KEY, v) : localStorage.removeItem(TOKEN_KEY); } catch (e) {} } };
+
+  /* ---------- relógio (hora do servidor; o computador só exibe) ---------- */
+  function agora() { return new Date(Date.now() + offset); }
+  function tick() {
+    const d = agora();
+    $('relogio').textContent = d.toLocaleTimeString('pt-BR', { timeZone: window.Ponto.TZ });
+    $('data').textContent = d.toLocaleDateString('pt-BR', { timeZone: window.Ponto.TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  setInterval(() => { if (info) tick(); }, 1000);
+
+  /* ---------- controle de ociosidade ---------- */
+  function armarOciosidade() {
+    clearTimeout(ocioso);
+    ocioso = setTimeout(irParaLista, 45000);
+  }
+  ['click', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => { if (sel) armarOciosidade(); }));
+
+  function limpar() { pin = ''; sel = null; estado = null; clearTimeout(ocioso); clearInterval(volta); }
+
+  /* ---------- telas ---------- */
+  function mensagem(texto, tipo) {
+    return texto ? '<div class="msg ' + (tipo || 'erro') + '">' + esc(texto) + '</div>' : '';
+  }
+
+  function telaAtivar(erro) {
+    $('bloco-relogio').hidden = true;
+    corpo.innerHTML =
+      '<div class="card" style="max-width:460px;margin:2rem auto">' +
+      '<h2>Ativar este computador</h2>' +
+      '<p class="muted" style="margin-bottom:12px">Cole o código de ativação gerado no painel do gestor (Estações). Ele é usado uma vez por computador.</p>' +
+      mensagem(erro) +
+      '<div class="field"><label for="tk">Código de ativação</label><input id="tk" autocomplete="off" spellcheck="false"></div>' +
+      '<div style="margin-top:12px"><button class="btn pri" id="ativar">Ativar</button></div></div>';
+    $('ativar').onclick = async () => {
+      const t = $('tk').value.trim();
+      if (!t) return;
+      const r = await rpc('estacao', { token: t });
+      if (!r.ok) return telaAtivar(msgErro(r.erro));
+      guardar.set(t); token = t; carregar(r);
+    };
+  }
+
+  async function carregar(resp) {
+    const r = resp || await rpc('estacao', { token });
+    if (!r.ok) {
+      if (r.erro === 'estacao_invalida') { guardar.set(null); token = null; return telaAtivar(msgErro(r.erro)); }
+      corpo.innerHTML = mensagem(msgErro(r.erro)) + '<div class="voltar"><button class="btn" id="tentar">Tentar de novo</button></div>';
+      $('tentar').onclick = () => carregar();
+      return;
+    }
+    info = r;
+    offset = new Date(r.agora).getTime() - Date.now();
+    $('est-empresa').textContent = r.empresa.nome + ' · ' + r.estacao.nome;
+    $('topo-empresa').textContent = r.empresa.nome;
+    $('bloco-relogio').hidden = false;
+    tick();
+    irParaLista();
+  }
+
+  function irParaLista(aviso) {
+    limpar();
+    if (!info) return;
+    const lista = info.funcionarios;
+    corpo.innerHTML = mensagem(aviso && aviso.texto, aviso && aviso.tipo) +
+      '<h2 style="text-align:center;font-size:15px;color:var(--mut);margin-bottom:14px;font-weight:500">Quem é você?</h2>' +
+      (lista.length
+        ? '<div class="nomes">' + lista.map((f) => '<button class="nome-btn" data-id="' + f.id + '">' + esc(f.nome) + '</button>').join('') + '</div>'
+        : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>') +
+      '<div class="voltar"><button class="btn sm" id="desvincular">Desvincular este computador</button></div>';
+    corpo.querySelectorAll('.nome-btn').forEach((b) => b.onclick = () => {
+      sel = lista.find((f) => f.id === Number(b.dataset.id)); pin = ''; telaPin();
+    });
+    $('desvincular').onclick = () => {
+      if (confirm('Desvincular este computador? Será preciso um novo código de ativação.')) {
+        guardar.set(null); token = null; info = null; telaAtivar();
+      }
+    };
+    // recarrega a lista de tempos em tempos (novos funcionários)
+    clearTimeout(irParaLista.t);
+    irParaLista.t = setTimeout(() => { if (!sel) carregar(); }, 5 * 60 * 1000);
+  }
+
+  function telaPin(erro) {
+    armarOciosidade();
+    corpo.innerHTML =
+      '<div class="pinbox">' +
+      '<div class="pin-nome">' + esc(sel.nome) + '</div>' +
+      '<div class="muted">Digite seu PIN</div>' + mensagem(erro) +
+      '<div class="pin-dots" id="dots"></div>' +
+      '<div class="keypad">' +
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button data-k="' + n + '">' + n + '</button>').join('') +
+      '<button class="acao" data-k="cancelar">Cancelar</button><button data-k="0">0</button><button class="acao" data-k="apagar">Apagar</button>' +
+      '</div>' +
+      '<div style="margin-top:14px"><button class="btn pri" id="ok" style="width:100%;justify-content:center;padding:14px">Confirmar</button></div>' +
+      '</div>';
+    desenharPontos();
+    corpo.querySelectorAll('.keypad button').forEach((b) => b.onclick = () => tecla(b.dataset.k));
+    $('ok').onclick = confirmarPin;
+  }
+  function desenharPontos() { const d = $('dots'); if (d) d.innerHTML = '<i></i>'.repeat(pin.length); }
+  function tecla(k) {
+    if (k === 'cancelar') return irParaLista();
+    if (k === 'apagar') pin = pin.slice(0, -1);
+    else if (pin.length < 6) pin += k;
+    desenharPontos();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!sel || !$('dots')) return;
+    if (/^[0-9]$/.test(e.key)) tecla(e.key);
+    else if (e.key === 'Backspace') tecla('apagar');
+    else if (e.key === 'Enter') confirmarPin();
+    else if (e.key === 'Escape') irParaLista();
+  });
+
+  async function confirmarPin() {
+    if (pin.length < 4) return;
+    $('ok').disabled = true;
+    const r = await rpc('estado', { token, funcionario_id: sel.id, pin });
+    if (!r.ok) {
+      pin = '';
+      if (r.erro === 'estacao_invalida') return carregar();
+      return telaPin(msgErro(r.erro));
+    }
+    estado = r; telaAcao();
+  }
+
+  function telaAcao(erro) {
+    armarOciosidade();
+    const botoes = estado.proximos.map((t, i) =>
+      '<button class="acao-btn' + (i ? ' sec' : '') + '" data-tipo="' + esc(t) + '">' +
+      (i ? esc(TIPOS[t]) : 'Registrar ' + esc(TIPOS[t]).toUpperCase()) + '</button>').join('');
+    corpo.innerHTML =
+      '<div class="pin-nome" style="text-align:center;margin-bottom:12px">Olá, ' + esc(sel.nome) + '</div>' + mensagem(erro) +
+      '<div class="acoes">' + botoes +
+      '<button class="acao-btn sec" id="ver-marcacoes" style="font-size:15px;padding:14px">Minhas marcações (48 h)</button>' +
+      '<button class="acao-btn sec" id="pedir" style="font-size:15px;padding:14px">Esqueci de bater — pedir correção</button>' +
+      '<button class="btn" id="sair" style="justify-content:center">Sair</button>' +
+      '</div><div id="lista-ult"></div>';
+    corpo.querySelectorAll('[data-tipo]').forEach((b) => b.onclick = () => registrar(b.dataset.tipo));
+    $('sair').onclick = () => irParaLista();
+    $('pedir').onclick = () => telaCorrecao();
+    $('ver-marcacoes').onclick = () => {
+      const u = estado.ultimas;
+      $('lista-ult').innerHTML = '<ul class="ultimas">' + (u.length
+        ? u.map((m) => '<li><span>' + esc(TIPOS[m.tipo]) + '</span><span>' + esc(dataHora(m.marcado_em)) + ' · NSR ' + esc(m.nsr) + '</span></li>').join('')
+        : '<li>Nenhuma marcação nas últimas 48 h.</li>') + '</ul>';
+    };
+  }
+
+  async function registrar(tipo) {
+    document.querySelectorAll('.acao-btn').forEach((b) => b.disabled = true);
+    const r = await rpc('registrar', { token, funcionario_id: sel.id, pin, tipo });
+    if (!r.ok) {
+      if (['pin_invalido', 'bloqueado'].includes(r.erro)) return irParaLista({ texto: msgErro(r.erro), tipo: 'erro' });
+      const nova = await rpc('estado', { token, funcionario_id: sel.id, pin });
+      if (nova.ok) estado = nova;
+      return telaAcao(msgErro(r.erro));
+    }
+    telaComprovante(r.comprovante);
+  }
+
+  function telaComprovante(c) {
+    clearTimeout(ocioso);
+    let seg = 12;
+    corpo.innerHTML =
+      '<div class="ok-big"><i class="ti ti-circle-check"></i></div>' +
+      '<p style="text-align:center;font-size:20px;font-weight:600;margin:6px 0 14px">' + esc(TIPOS[c.tipo]) + ' registrada às ' + esc(hora(c.marcado_em)) + '</p>' +
+      '<div class="comprovante"><h3>' + esc(c.titulo) + '</h3><dl>' +
+      '<dt>Trabalhador</dt><dd>' + esc(c.funcionario) + '</dd>' +
+      '<dt>Empresa</dt><dd>' + esc(c.empresa) + (c.cnpj ? ' · ' + esc(c.cnpj) : '') + '</dd>' +
+      (c.endereco ? '<dt>Local</dt><dd>' + esc(c.endereco) + '</dd>' : '') +
+      '<dt>Data/hora</dt><dd>' + esc(dataHora(c.marcado_em)) + '</dd>' +
+      '<dt>Marcação</dt><dd>' + esc(TIPOS[c.tipo]) + '</dd>' +
+      '<dt>NSR</dt><dd>' + esc(c.nsr) + '</dd>' +
+      '<dt>Hash</dt><dd class="hash">' + esc(c.hash) + '</dd></dl></div>' +
+      '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button> <span class="muted" id="cont"></span></div>';
+    $('fechar').onclick = () => irParaLista();
+    pin = '';
+    const cont = () => { $('cont').textContent = 'voltando em ' + seg + 's'; };
+    cont();
+    volta = setInterval(() => { seg--; if (seg <= 0) { clearInterval(volta); irParaLista(); } else cont(); }, 1000);
+    // o funcionário pode tirar print do comprovante; a lista de 48 h fica disponível ao entrar de novo
+  }
+
+  function telaCorrecao(erro) {
+    armarOciosidade();
+    const hoje = hojeISO();
+    corpo.innerHTML =
+      '<div class="card"><h2>Pedir correção de ponto</h2>' +
+      '<p class="muted" style="margin-bottom:12px">Informe a marcação que você esqueceu. O gestor vai aprovar ou recusar; até lá, ela não conta.</p>' +
+      mensagem(erro) +
+      '<div class="row"><div class="field"><label for="c-tipo">Qual marcação?</label><select id="c-tipo">' +
+      Object.keys(TIPOS).map((t) => '<option value="' + t + '">' + esc(TIPOS[t]) + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label for="c-data">Dia</label><input type="date" id="c-data" value="' + hoje + '" max="' + hoje + '"></div>' +
+      '<div class="field"><label for="c-hora">Horário</label><input type="time" id="c-hora"></div></div>' +
+      '<div class="field"><label for="c-motivo">Motivo</label><input id="c-motivo" maxlength="200" placeholder="Ex.: esqueci de bater na volta do intervalo"></div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px"><button class="btn pri" id="enviar">Enviar pedido</button><button class="btn" id="voltar">Voltar</button></div></div>';
+    $('voltar').onclick = () => telaAcao();
+    $('enviar').onclick = async () => {
+      const d = $('c-data').value, h = $('c-hora').value, m = $('c-motivo').value.trim();
+      if (!d || !h) return telaCorrecao('Informe o dia e o horário.');
+      $('enviar').disabled = true;
+      const r = await rpc('solicitar_correcao', { token, funcionario_id: sel.id, pin, tipo_marcacao: $('c-tipo').value, marcado_em: d + 'T' + h, motivo: m });
+      if (!r.ok) {
+        if (['pin_invalido', 'bloqueado'].includes(r.erro)) return irParaLista({ texto: msgErro(r.erro), tipo: 'erro' });
+        return telaCorrecao(msgErro(r.erro));
+      }
+      irParaLista({ texto: 'Pedido enviado. O gestor vai analisar.', tipo: 'ok' });
+    };
+  }
+
+  /* ---------- início ---------- */
+  token = guardar.get();
+  if (!window.PONTO_CONFIG || String(window.PONTO_CONFIG.anonKey).startsWith('COLE_AQUI')) {
+    corpo.innerHTML = mensagem('Sistema ainda não configurado.');
+  } else if (!token) {
+    telaAtivar();
+  } else {
+    carregar();
+  }
+})();
+</script>
+</body>
+</html>

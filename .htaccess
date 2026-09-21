@@ -1,4 +1,10 @@
-# Documentação interna do projeto não deve ser pública
-<FilesMatch "\.(md)$">
+# A Hostinger publica o repositório inteiro em public_html.
+# Nada abaixo deve ser acessível pelo navegador.
+
+# Documentação e ferramentas de desenvolvimento
+RedirectMatch 404 ^/(dev|docs)(/|$)
+RedirectMatch 404 ^/\.git
+
+<FilesMatch "\.(md|sql|mjs|cjs|json|env|log)$">
   Require all denied
 </FilesMatch>

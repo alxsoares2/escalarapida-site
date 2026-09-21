@@ -41,7 +41,41 @@ curl -s https://www.escalarapida.com.br | tr -d '\r' | diff - index.html
 
 (o `tr -d '\r'` ignora o CRLF que o servidor coloca no arquivo.)
 
-## Como o site funciona
+## Ponto eletrônico (`/pontoeletronico`)
+
+Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até 5 funcionários cada). **Regras completas em [`docs/ponto/ESPECIFICACAO.md`](docs/ponto/ESPECIFICACAO.md).** A Portaria MTP 671/2021 (REP-P) é só referência de projeto; **não há** INPI/ATTR/ICP-Brasil, então o sistema não pode se anunciar como "compatível com a Portaria 671".
+
+| Onde | O que é |
+|---|---|
+| `pontoeletronico/index.html` | Tela do computador do balcão: escolhe o nome, digita o PIN, marca (entrada, saída p/ intervalo, volta, saída), comprovante, pedido de correção |
+| `pontoeletronico/admin/` | Painel do gestor: funcionários e jornadas, domingos de folga e exceções, correções, relatórios (espelho mensal/PDF, banco de horas, faltas), empresas e estações |
+| `pontoeletronico/api.js`, `config.js`, `ponto.css` | Cliente da API, configuração pública, estilo |
+| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0006 |
+| `dev/tests/` | 83 testes: regras de apuração, segurança e as telas (jsdom ligado a um Postgres em memória) |
+
+**Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
+
+### Operações do dia a dia (no diretório `dev/`)
+
+```bash
+npm test                                                                   # 83 testes, ~15 s, não toca no banco real
+node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
+node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
+```
+
+`DATABASE_URL` vem do `.env` do `marcus-assistente` (mesmo banco). Nunca copiar essa URL para este repositório. A pasta `~/.credenciais` citada no CLAUDE.md raiz **não existe** neste computador.
+
+### Para colocar no ar (passos que dependem do dono)
+1. **Chave `anon`:** copiar do Supabase (Project Settings → API → `anon` `public`) e colar em `pontoeletronico/config.js`. Enquanto estiver o texto `COLE_AQUI...`, as páginas mostram "Sistema ainda não configurado".
+2. **Criar o acesso do gestor:** rodar `criar-codigo-instalacao.mjs`, abrir `/pontoeletronico/admin/` e criar e-mail + senha (a senha nunca passa pelo Claude; o código vale uma vez).
+3. No painel: cadastrar as 2 empresas (com CNPJ e endereço, que saem no comprovante), os funcionários (PIN de 4 a 6 dígitos) e as jornadas.
+4. Em **Estações**, gerar o código de ativação e colar no computador do balcão (aparece uma vez).
+5. `git push` publica tudo (deploy automático).
+
+### Arquivos que nunca podem ficar públicos
+A Hostinger publica o repositório inteiro. O `.htaccess` bloqueia `dev/`, `docs/`, `.git` e as extensões `.md .sql .mjs .cjs .json .env .log`. Por isso o frontend do ponto usa só `.js`, `.css` e `.html`. Não colocar `.env` nem chaves no repositório.
+
+## Como o site funciona (gerador de escala)
 
 ### Entradas (telas)
 
