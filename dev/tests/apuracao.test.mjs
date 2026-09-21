@@ -187,3 +187,57 @@ test('domingos de folga: só domingos do mês informado', async () => {
   assert.equal(d['2026-09-20'].motivo, 'folga_domingo');
   assert.equal(d['2026-09-27'].motivo, 'folga_domingo');
 });
+
+test('adicional noturno: minutos entre 22h e 5h (horário de Recife)', async () => {
+  const db = await novoBanco();
+  const noturno = async (a, b) => (await db.query('select ponto.minutos_noturnos($1::timestamptz, $2::timestamptz) n',
+    [a.replace(' ', 'T') + ':00-03:00', b.replace(' ', 'T') + ':00-03:00'])).rows[0].n;
+  assert.equal(await noturno('2026-09-14 10:00', '2026-09-14 16:15'), 0);            // dia
+  assert.equal(await noturno('2026-09-14 21:00', '2026-09-14 23:00'), 60);           // entra na janela
+  assert.equal(await noturno('2026-09-14 18:00', '2026-09-15 00:15'), 135);          // 22:00 -> 00:15
+  assert.equal(await noturno('2026-09-14 20:00', '2026-09-15 02:00'), 240);          // 22:00 -> 02:00
+  assert.equal(await noturno('2026-09-15 04:00', '2026-09-15 06:00'), 60);           // 04:00 -> 05:00
+  assert.equal(await noturno('2026-09-14 20:00', '2026-09-15 07:00'), 420);          // janela inteira: 22h -> 5h
+  assert.equal(await noturno('2026-09-15 05:00', '2026-09-15 06:00'), 0);            // logo após a janela
+  assert.equal(await noturno('2026-09-14 22:00', '2026-09-14 22:00'), 0);            // intervalo vazio
+});
+
+test('espelho: banco de horas acumulado dia a dia, noturno e jornada', async (t) => {
+  const { db, sessao } = await montar();
+  const r = await rpc(db, 'admin_apuracao', { sessao, funcionario_id: 1, ini: '2026-09-13', fim: '2026-09-30' });
+  assert.equal(r.ok, true);
+  const dia = Object.fromEntries(r.dias.map((d) => [d.data, d]));
+
+  await t.test('acumulado soma só os dias com saldo (falta não move o banco)', () => {
+    assert.equal(r.saldo_anterior_min, 0);
+    assert.equal(dia['2026-09-14'].banco_min, 0);
+    assert.equal(dia['2026-09-16'].banco_min, -20);
+    assert.equal(dia['2026-09-17'].banco_min, -20 + 45);
+    assert.equal(dia['2026-09-18'].banco_min, 25);                 // falta: banco igual ao dia anterior
+    assert.equal(dia['2026-09-19'].banco_min, 265);
+    assert.equal(dia['2026-09-20'].banco_min, -95);                // compensação de 6h
+    assert.equal(dia['2026-09-30'].banco_min, r.saldo_banco_min);  // último dia = banco atual
+    assert.equal(r.saldo_banco_min, -95);
+  });
+  await t.test('adicional noturno vazio em jornada diurna', () => {
+    assert.equal(dia['2026-09-14'].an_min, 0);
+    assert.equal(dia['2026-09-18'].an_min, null);                  // falta: sem marcações
+  });
+  await t.test('jornada vigente vem junto (para a carga por dia da semana)', () => {
+    assert.deepEqual(r.jornada.dias_trabalho, [0, 1, 2, 3, 4, 5]);
+    assert.equal(r.jornada.entrada, '10:00:00');
+    assert.equal(r.jornada.saida, '16:15:00');
+    assert.equal(r.jornada.intervalo_min, 15);
+  });
+  await t.test('noturno de quem fecha a loja: 18h às 0h15 = 135 min', async () => {
+    const b = await rpc(db, 'admin_apuracao', { sessao, funcionario_id: 2, ini: '2026-09-13', fim: '2026-09-27' });
+    const d = b.dias.find((x) => x.data === '2026-09-18');
+    assert.equal(d.an_min, 135);
+    assert.equal(d.status, 'trabalho');
+  });
+  await t.test('saldo anterior do mês seguinte carrega o banco', async () => {
+    const m = await rpc(db, 'admin_apuracao', { sessao, funcionario_id: 1, ini: '2026-09-20', fim: '2026-09-30' });
+    assert.equal(m.saldo_anterior_min, 265);                       // banco até 19/09
+    assert.equal(m.dias[0].banco_min, 265 - 360);                  // 20/09 compensação
+  });
+});

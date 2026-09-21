@@ -30,6 +30,8 @@ Regras de segurança da API: as tabelas nunca são acessadas direto; toda funç�
 3. O sistema mostra as marcações válidas naquele momento e o funcionário confirma.
 4. Hora sempre do **servidor**, truncada no minuto. Nunca do computador.
 5. Comprovante na tela: NSR, empresa, nome, data/hora, tipo, hash.
+6. **Impressão automática** do comprovante em impressora térmica não fiscal (**Elgin i9**, bobina de 80 mm ou 58 mm, ESC/POS): sai sozinho após cada marcação, sem janela de impressão, e há botão "Reimprimir". Implementado como impressão do navegador (CSS `@page` na largura da bobina) com o Chrome em modo `--kiosk-printing`, usando a i9 como impressora padrão do Windows. Configurável em `config.js` (`imprimirAoMarcar`, `larguraCupomMm`).
+7. **Só o gestor desvincula** um computador (desativa a estação no painel). A tela do balcão não tem botão para isso.
 
 **4 marcações por dia:** `entrada` → `saida_intervalo` → `volta_intervalo` → `saida`. A partir da entrada também é aceita `saida` direta (dia sem intervalo registrado, gera alerta).
 
@@ -102,7 +104,11 @@ Por funcionário, em **minutos**: `saldo_inicial + soma dos saldos dos dias` a p
 Login com e-mail e senha (bcrypt), sessão de 12 h, bloqueio após tentativas erradas. Alterna entre as 2 empresas. Cadastra empresas, estações, funcionários (nome, CPF, PIN), jornadas, exceções e domingos de folga; aprova correções.
 
 Relatórios:
-1. **Espelho de ponto mensal** por funcionário (as 4 marcações de cada dia + saldo), exportável em PDF.
+1. **Espelho de ponto mensal** por funcionário, no estilo da planilha que o dono usava ("Controle de cartão ponto"): cabeçalho com empresa/CNPJ/funcionário/mês, quadro **Carga horária** por dia da semana, quadro **Banco de horas** (saldo anterior, variação, atual, faltas) e, por dia: Entrada, Saída, Entrada, Saída, **H. Diária**, **Atrasos**, **Horas Extras**, **Compensado**, **A.N.** (adicional noturno), **Banco de horas acumulado linha a linha** e Obs. (avisos), com linha de totais. Impressão em A4 paisagem com linhas de assinatura.
+   - **A.N.:** minutos trabalhados entre 22h e 5h (Recife). Sem a conversão da "hora noturna reduzida" (52min30s): isso fica com a folha/contador. Decisão do dono: incluir, pois o fechamento da loja às vezes passa das 22h.
+   - **Sem colunas de "faixa" de hora extra** (1ª/2ª faixa da planilha antiga): decisão do dono, tudo vai só para o banco de horas.
+   - Atraso = saldo negativo em dia trabalhado; Hora extra = saldo positivo; Compensado = dia inteiro abatido do banco.
+   - **Quem vê:** só o gestor. O funcionário **não** tem acesso ao espelho nem ao banco de horas pelo sistema; no fim do mês o gestor imprime o espelho e o funcionário assina atestando as marcações. No balcão o funcionário só vê as próprias marcações das últimas 48 h (com NSR) e o comprovante de cada marcação.
 2. **Saldo do banco de horas** com histórico de créditos e débitos.
 3. **Lista de faltas** por funcionário e período.
 4. **Correções pendentes.**
@@ -112,11 +118,11 @@ Celular do funcionário, geolocalização, foto/biometria, integração com o ge
 
 ## 9. Estado da implementação (21/09/2026)
 
-- **Banco:** migrations 0001–0006 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
-- **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) escritos e testados; **ainda não publicados** (nada foi enviado ao GitHub).
-- **Testes:** 83 automáticos passando (apuração, segurança, telas).
-- **Falta para usar:** chave `anon` em `config.js`; criar o acesso do gestor (código de instalação de uso único); cadastrar empresas, funcionários, jornadas e estação; publicar.
-- **Primeiro acesso:** o admin é criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
+- **Banco:** migrations 0001–0007 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
+- **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026** (commit `8e339e1`), com a chave `anon` configurada e a conta do gestor criada.
+- **Feito depois, ainda só local (sem `git push`):** só o gestor desvincula computador; impressão automática do comprovante (Elgin i9); espelho novo (A.N., banco acumulado, carga horária). A migration 0007 (espelho) já está no banco real e é compatível com o frontend publicado.
+- **Testes:** 90 automáticos passando (apuração, segurança, telas).
+- **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
 
 ## 10. Pontos a confirmar com o dono
 - `incompleto` versus `falta` quando falta só uma marcação (regra do item 5.4).

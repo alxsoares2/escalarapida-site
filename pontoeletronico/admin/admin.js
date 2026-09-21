@@ -432,23 +432,72 @@
     const r = await chamar('admin_apuracao', { funcionario_id: e.func, ini, fim });
     if (!r.ok) return el.innerHTML = msg(msgErro(r.erro));
     const emp = S.empresas.find((x) => x.id === S.empresa) || {};
+
+    // HH:MM como na planilha; '–' quando não há valor
+    const hm = (m) => m == null ? '–' : String(Math.floor(Math.abs(m) / 60)).padStart(2, '0') + ':' + String(Math.abs(m) % 60).padStart(2, '0');
+    const hmSinal = (m) => (m < 0 ? '-' : m > 0 ? '+' : '') + hm(m);
+    const tm = (t) => { const p = t.split(':').map(Number); return p[0] * 60 + p[1]; };
+    const j = r.jornada;
+    const carga = j ? (((tm(j.saida) - tm(j.entrada)) + 1440) % 1440 || 1440) - j.intervalo_min : 0;
+
+    // Situação do dia quando não há marcações
+    const rotulo = (d) => {
+      if (d.status === 'falta') return '<b>FALTA</b>';
+      if (d.status === 'compensado') return 'Compensação do banco de horas';
+      if (d.status === 'em_andamento') return 'Em andamento';
+      if (d.status === 'incompleto') return '<b>Incompleto</b> — corrigir em "Correções"';
+      return esc(MOTIVO[d.motivo] || 'Folga');
+    };
+    const tot = { trab: 0, atr: 0, ext: 0, comp: 0, an: 0, faltas: 0 };
     const linhas = r.dias.map((d) => {
-      const cls = d.status === 'folga' ? 'folga' : d.status === 'falta' ? 'falta' : '';
-      const sit = d.status === 'falta' ? '<b>FALTA</b>' : esc(d.motivo && d.status !== 'trabalho' ? MOTIVO[d.motivo] : SITUACAO[d.status]);
+      const temMarcas = !!d.entrada;
+      const saldo = d.saldo_min;
+      const atr = d.status === 'trabalho' && saldo < 0 ? -saldo : 0;
+      const ext = saldo > 0 ? saldo : 0;
+      const comp = d.status === 'compensado' ? -saldo : 0;
+      const an = d.an_min || 0;
+      tot.trab += d.trabalhado_min || 0; tot.atr += atr; tot.ext += ext; tot.comp += comp; tot.an += an;
+      if (d.status === 'falta') tot.faltas++;
+      const cls = d.status === 'folga' ? 'folga' : d.status === 'falta' ? 'falta' : d.status === 'incompleto' ? 'inc' : d.status === 'compensado' ? 'comp' : '';
+      const marcas = temMarcas
+        ? '<td>' + esc(hora(d.entrada)) + '</td><td>' + esc(hora(d.saida_intervalo)) + '</td><td>' + esc(hora(d.volta_intervalo)) + '</td><td>' + esc(hora(d.saida)) + '</td>'
+        : '<td colspan="4" class="c">' + rotulo(d) + '</td>';
       const al = (d.alertas || []).map((a) => '<span class="badge warn" title="' + esc(ALERTA[a] || a) + '">' + esc(ALERTA[a] || a) + '</span>').join(' ');
-      return '<tr class="' + cls + '"><td>' + esc(dataBR(d.data)) + '</td><td>' + esc(DIAS_SEMANA[d.dow]) + '</td><td>' + sit + '</td>' +
-        '<td>' + esc(hora(d.entrada)) + '</td><td>' + esc(hora(d.saida_intervalo)) + '</td><td>' + esc(hora(d.volta_intervalo)) + '</td><td>' + esc(hora(d.saida)) + '</td>' +
-        '<td class="n">' + (d.trabalhado_min == null ? '—' : esc(min(d.trabalhado_min))) + '</td><td class="n">' + (d.saldo_min == null ? '—' : saldoTxt(d.saldo_min)) + '</td><td>' + al + '</td></tr>';
+      return '<tr class="' + cls + '"><td>' + esc(dataBR(d.data)) + '</td><td>' + esc(DIAS_SEMANA[d.dow]) + '</td>' + marcas +
+        '<td class="n">' + (d.trabalhado_min == null ? '–' : hm(d.trabalhado_min)) + '</td>' +
+        '<td class="n">' + (atr ? '<span class="neg">' + hm(atr) + '</span>' : '–') + '</td>' +
+        '<td class="n">' + (ext ? '<span class="pos">' + hm(ext) + '</span>' : '–') + '</td>' +
+        '<td class="n">' + (comp ? hm(comp) : '–') + '</td>' +
+        '<td class="n">' + (an ? hm(an) : '–') + '</td>' +
+        '<td class="n banco"><span class="' + (d.banco_min > 0 ? 'pos' : d.banco_min < 0 ? 'neg' : '') + '">' + hmSinal(d.banco_min) + '</span></td>' +
+        '<td class="obs">' + al + '</td></tr>';
     }).join('');
-    const totTrab = r.dias.reduce((a, d) => a + (d.trabalhado_min || 0), 0);
-    const nFaltas = r.dias.filter((d) => d.status === 'falta').length;
-    el.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-      '<div><h2 style="margin-bottom:4px">Espelho de ponto — ' + esc(titulo) + '</h2><div><b>' + esc(r.funcionario.nome) + '</b> · ' + esc(r.funcionario.empresa) + (r.funcionario.cnpj ? ' · CNPJ ' + esc(r.funcionario.cnpj) : '') + '</div></div>' +
+
+    // carga horária por dia da semana (segunda a domingo), como no canto da planilha
+    const cargaDia = [1, 2, 3, 4, 5, 6, 0].map((dw) => '<tr><td>' + esc(DIAS_SEMANA[dw]) + '</td><td class="n">' + (j && j.dias_trabalho.includes(dw) ? hm(carga) : '–') + '</td></tr>').join('');
+    const bancoFinal = r.dias.length ? r.dias[r.dias.length - 1].banco_min : r.saldo_anterior_min;
+
+    el.innerHTML = '<div class="card espelho">' +
+      '<div class="esp-topo"><div class="esp-empresa">' + esc(r.funcionario.empresa) + '</div>' +
+      '<div class="muted">' + (r.funcionario.cnpj ? 'CNPJ ' + esc(r.funcionario.cnpj) : '') + '</div>' +
+      '<div class="esp-sub">CONTROLE DE CARTÃO PONTO — ' + esc(titulo.toUpperCase()) + '</div></div>' +
+      '<div class="esp-cab"><div class="esp-func"><span>Funcionário</span><b>' + esc(r.funcionario.nome) + '</b></div>' +
       '<button class="btn no-print" id="r-print"><i class="ti ti-printer"></i> Imprimir / PDF</button></div>' +
-      '<div class="scroll" style="margin-top:12px"><table class="t"><tr><th>Data</th><th>Dia</th><th>Situação</th><th>Entrada</th><th>Saída int.</th><th>Volta int.</th><th>Saída</th><th class="n">Trabalhado</th><th class="n">Saldo</th><th>Avisos</th></tr>' +
-      (linhas || '<tr><td colspan="10" class="muted">Sem dias apurados neste mês (verifique a data de início do controle).</td></tr>') + '</table></div>' +
-      '<p style="margin-top:10px">Trabalhado no mês: <b>' + esc(min(totTrab)) + '</b> &nbsp;·&nbsp; Saldo do período: <b>' + saldoTxt(r.saldo_periodo_min) + '</b> &nbsp;·&nbsp; Faltas: <b>' + nFaltas + '</b> &nbsp;·&nbsp; Banco de horas atual: <b>' + saldoTxt(r.saldo_banco_min) + '</b></p>' +
-      '<p class="muted" style="margin-top:8px">Horários no fuso de Recife. Marcações originais são imutáveis; correções constam em "Correções". ' + esc(emp.nome || '') + '</p></div>';
+      '<div class="esp-corpo"><div class="scroll esp-tab"><table class="t esp"><thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Saída</th><th>Entrada</th><th>Saída</th>' +
+      '<th class="n">H. Diária</th><th class="n">Atrasos</th><th class="n">Horas Extras</th><th class="n">Compensado</th><th class="n">A.N.</th><th class="n">Banco de horas</th><th>Obs.</th></tr></thead><tbody>' +
+      (linhas || '<tr><td colspan="13" class="muted">Sem dias apurados neste mês (verifique a data de início do controle).</td></tr>') +
+      '</tbody><tfoot><tr><th colspan="6" class="n">TOTAIS DO MÊS</th><th class="n">' + hm(tot.trab) + '</th><th class="n">' + hm(tot.atr) + '</th><th class="n">' + hm(tot.ext) +
+      '</th><th class="n">' + hm(tot.comp) + '</th><th class="n">' + hm(tot.an) + '</th><th class="n">' + hmSinal(bancoFinal) + '</th><th></th></tr></tfoot></table></div>' +
+      '<div class="esp-lado"><div class="esp-caixa"><div class="esp-caixa-t">CARGA HORÁRIA</div><table class="t">' + cargaDia +
+      '<tr><td>Feriados</td><td class="n">folga</td></tr></table>' +
+      (j ? '<div class="muted" style="margin-top:4px">' + esc(j.entrada.slice(0, 5)) + '–' + esc(j.saida.slice(0, 5)) + ' · intervalo ' + esc(j.intervalo_min) + ' min</div>' : '') + '</div>' +
+      '<div class="esp-caixa"><div class="esp-caixa-t">BANCO DE HORAS</div><table class="t">' +
+      '<tr><td>Saldo anterior</td><td class="n">' + hmSinal(r.saldo_anterior_min) + '</td></tr>' +
+      '<tr><td>Variação no mês</td><td class="n">' + hmSinal(r.saldo_periodo_min) + '</td></tr>' +
+      '<tr><td><b>Banco de horas atual</b></td><td class="n"><b class="' + (r.saldo_banco_min > 0 ? 'pos' : r.saldo_banco_min < 0 ? 'neg' : '') + '">' + hmSinal(r.saldo_banco_min) + '</b></td></tr>' +
+      '<tr><td>Faltas no mês</td><td class="n"><b>' + tot.faltas + '</b></td></tr></table></div></div></div>' +
+      '<p class="muted" style="margin-top:8px">Horários no fuso de Recife. A.N. = minutos trabalhados entre 22h e 5h (sem conversão da hora noturna reduzida). Falta não altera o banco de horas; compensação abate. Marcações originais são imutáveis; correções constam na aba "Correções". Banco de horas exige acordo por escrito com o funcionário.</p>' +
+      '<div class="so-print assinaturas"><div>______________________________<br>Funcionário</div><div>______________________________<br>' + esc(emp.nome || 'Empresa') + '</div></div></div>';
     $('r-print').onclick = () => window.print();
   }
 

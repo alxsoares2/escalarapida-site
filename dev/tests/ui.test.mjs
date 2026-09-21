@@ -15,7 +15,7 @@ async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = 
   const pasta = new URL('./', arquivo);
   let html = readFileSync(arquivo, 'utf8');
   html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) => {
-    if (src.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste'};</script>`;
+    if (src.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80};</script>`;
     return `<script>${readFileSync(new URL(src, pasta), 'utf8')}</script>`;
   });
   const erros = [];
@@ -32,6 +32,8 @@ async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = 
         const r = await db.query('select public.ponto_rpc($1, $2::jsonb) as r', [b.p_fn, JSON.stringify(b.p_args)]);
         return { ok: true, json: async () => r.rows[0].r };
       };
+      w.__prints = 0;
+      w.print = () => { w.__prints++; };   // jsdom não imprime; conta as chamadas
       w.confirm = () => true;
       w.prompt = () => 'motivo de teste';
     }
@@ -77,6 +79,9 @@ test('estação: ativar computador, marcar ponto, comprovante e erros', async (t
     assert.deepEqual([...p.d.querySelectorAll('.nome-btn')].map((b) => b.textContent), ['Ana', 'Beto']);
     assert.equal(p.w.localStorage.getItem('ponto_estacao_token'), c.token);
     assert.match(p.$('#relogio').textContent, /^\d\d:\d\d:\d\d$/);
+    // funcionário não consegue desvincular o computador: só o gestor, pelo painel
+    assert.equal(p.$('#desvincular'), null);
+    assert.ok(!/desvincular/i.test(p.texto()));
     p.fechar();
   });
 
@@ -109,6 +114,21 @@ test('estação: ativar computador, marcar ponto, comprovante e erros', async (t
     assert.match(p.$('.hash').textContent, /^[0-9a-f]{64}$/);
     assert.equal((await db.query("select tipo::text t from ponto.marcacao")).rows[0].t, 'entrada');
     assert.equal(p.erros.length, 0, p.erros.join('\n'));
+
+    // impressão automática do cupom (impressora térmica), sem o funcionário clicar em nada
+    await p.esperar(() => p.w.__prints === 1, 'impressão automática');
+    const cupom = p.$('#cupom').textContent.replace(/\s+/g, ' ');
+    assert.match(cupom, /COMPROVANTE DE REGISTRO DE PONTO/);
+    assert.match(cupom, /Basílico/);
+    assert.match(cupom, /CNPJ 00\.000\.000\/0001-00/);
+    assert.match(cupom, /Ana/);
+    assert.match(cupom, /ENTRADA/);
+    assert.match(cupom, /NSR\s*1(?!\d)/);
+    assert.ok(cupom.includes(p.$('.hash').textContent), 'o hash impresso é o mesmo do comprovante');
+    assert.match(p.d.head.innerHTML, /@page\{size:80mm auto;margin:0\}/);
+    // reimprimir
+    p.clicar(p.$('#reimprimir'));
+    assert.equal(p.w.__prints, 2);
     p.fechar();
   });
 
@@ -243,11 +263,21 @@ test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
     await p.esperar(() => p.$('#r-mes'), 'relatórios');
     p.$('#r-mes').value = '2026-09'; p.$('#r-f').value = '1'; p.$('#r-tipo').value = 'espelho';
     p.clicar(p.$('#r-ok'));
-    await p.esperar(() => p.$('#rel table.t') && p.$('#rel').textContent.includes('Espelho de ponto'), 'espelho');
+    await p.esperar(() => p.$('#rel table.t') && p.$('#rel').textContent.includes('TOTAIS DO MÊS'), 'espelho');
     const tx = p.$('#rel').textContent;
     assert.match(tx, /14\/09\/2026/);
     assert.match(tx, /FALTA/);
     assert.match(tx, /Banco de horas atual/);
+    // estrutura no estilo da planilha: colunas, carga horária por dia e totais
+    for (const col of ['H. Diária', 'Atrasos', 'Horas Extras', 'A.N.', 'Banco de horas', 'CARGA HORÁRIA', 'TOTAIS DO MÊS', 'CONTROLE DE CARTÃO PONTO']) {
+      assert.ok(tx.includes(col), 'falta no espelho: ' + col);
+    }
+    const celulas = (tr) => [...tr.children].map((c) => c.textContent.trim());
+    const carga = [...p.d.querySelectorAll('.esp-lado table')[0].querySelectorAll('tr')].map((tr) => celulas(tr).join(' '));
+    assert.deepEqual(carga.slice(0, 7), ['Seg 06:00', 'Ter 06:00', 'Qua 06:00', 'Qui 06:00', 'Sex 06:00', 'Sáb –', 'Dom 06:00']);
+    // 14/09 (dia perfeito): marcações, 06:00 trabalhadas, sem atraso/extra/compensado/noturno, banco 00:00
+    const linha14 = [...p.d.querySelectorAll('table.esp tbody tr')].find((tr) => tr.textContent.includes('14/09/2026'));
+    assert.deepEqual(celulas(linha14).slice(2, 12), ['10:00', '13:00', '13:15', '16:15', '06:00', '–', '–', '–', '–', '00:00']);
     assert.equal(p.erros.length, 0, p.erros.join('\n'));
     p.fechar();
   });

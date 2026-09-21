@@ -22,6 +22,7 @@
 </div>
 
 <main class="est-corpo" id="corpo"></main>
+<div id="cupom" class="cupom" aria-hidden="true"></div>
 
 <script src="config.js"></script>
 <script src="api.js"></script>
@@ -31,6 +32,36 @@
   const $ = (id) => document.getElementById(id);
   const corpo = $('corpo');
   const TOKEN_KEY = 'ponto_estacao_token';
+  const CFG = window.PONTO_CONFIG || {};
+  const LARGURA_MM = Number(CFG.larguraCupomMm) || 80;   // bobina: 80 ou 58 (Elgin i9 aceita as duas)
+
+  // Tamanho da página de impressão = largura da bobina; a área útil é ~8 mm menor.
+  (function ajustarPagina() {
+    const st = document.createElement('style');
+    st.textContent = '@page{size:' + LARGURA_MM + 'mm auto;margin:0}';
+    document.head.appendChild(st);
+    document.documentElement.style.setProperty('--cupom-w', (LARGURA_MM - 8) + 'mm');
+  })();
+
+  function montarCupom(c) {
+    const d = new Date(c.marcado_em);
+    const data = d.toLocaleDateString('pt-BR', { timeZone: window.Ponto.TZ });
+    return '<div class="c b">COMPROVANTE DE REGISTRO DE PONTO</div><div class="c b">DO TRABALHADOR</div><hr>' +
+      '<div class="b">' + esc(c.empresa) + '</div>' +
+      (c.cnpj ? '<div>CNPJ ' + esc(c.cnpj) + '</div>' : '') +
+      (c.endereco ? '<div>' + esc(c.endereco) + '</div>' : '') + '<hr>' +
+      '<div>Trabalhador</div><div class="b">' + esc(c.funcionario) + '</div>' +
+      '<div class="k"><span>Marcação</span><span class="b">' + esc(TIPOS[c.tipo]).toUpperCase() + '</span></div>' +
+      '<div class="k"><span>Data</span><span>' + esc(data) + '</span></div>' +
+      '<div class="k"><span>Hora</span><span class="b">' + esc(hora(c.marcado_em)) + '</span></div>' +
+      '<div class="k"><span>NSR</span><span>' + esc(c.nsr) + '</span></div><hr>' +
+      '<div>Hash</div><div class="h">' + esc(c.hash) + '</div><hr>' +
+      '<div class="c">Guarde este comprovante.</div>';
+  }
+  function imprimirCupom(c) {
+    $('cupom').innerHTML = montarCupom(c);
+    try { window.print(); } catch (e) { /* sem impressora: o comprovante continua na tela */ }
+  }
 
   let token = null, info = null, offset = 0;
   let sel = null;            // funcionário escolhido {id, nome}
@@ -107,16 +138,11 @@
       '<h2 style="text-align:center;font-size:15px;color:var(--mut);margin-bottom:14px;font-weight:500">Quem é você?</h2>' +
       (lista.length
         ? '<div class="nomes">' + lista.map((f) => '<button class="nome-btn" data-id="' + f.id + '">' + esc(f.nome) + '</button>').join('') + '</div>'
-        : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>') +
-      '<div class="voltar"><button class="btn sm" id="desvincular">Desvincular este computador</button></div>';
+        : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>');
     corpo.querySelectorAll('.nome-btn').forEach((b) => b.onclick = () => {
       sel = lista.find((f) => f.id === Number(b.dataset.id)); pin = ''; telaPin();
     });
-    $('desvincular').onclick = () => {
-      if (confirm('Desvincular este computador? Será preciso um novo código de ativação.')) {
-        guardar.set(null); token = null; info = null; telaAtivar();
-      }
-    };
+    // Não há botão de desvincular: só o gestor desativa a estação, pelo painel (Empresas e estações).
     // recarrega a lista de tempos em tempos (novos funcionários)
     clearTimeout(irParaLista.t);
     irParaLista.t = setTimeout(() => { if (!sel) carregar(); }, 5 * 60 * 1000);
@@ -215,8 +241,11 @@
       '<dt>Marcação</dt><dd>' + esc(TIPOS[c.tipo]) + '</dd>' +
       '<dt>NSR</dt><dd>' + esc(c.nsr) + '</dd>' +
       '<dt>Hash</dt><dd class="hash">' + esc(c.hash) + '</dd></dl></div>' +
-      '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button> <span class="muted" id="cont"></span></div>';
+      '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button> <button class="btn" id="reimprimir"><i class="ti ti-printer"></i> Reimprimir</button> <span class="muted" id="cont"></span></div>';
     $('fechar').onclick = () => irParaLista();
+    $('reimprimir').onclick = () => imprimirCupom(c);
+    // imprime sozinho; com o Chrome em modo --kiosk-printing sai direto na impressora padrão, sem janela
+    if (CFG.imprimirAoMarcar !== false) setTimeout(() => imprimirCupom(c), 150);
     pin = '';
     const cont = () => { $('cont').textContent = 'voltando em ' + seg + 's'; };
     cont();

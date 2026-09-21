@@ -99,3 +99,51 @@ body.estacao{display:flex;flex-direction:column}
   .print-area{display:block!important}
   table.t th,table.t td{border:.5px solid #999;font-size:10px;padding:3px 5px}
 }
+
+/* ---------- cupom do comprovante (impressora térmica não fiscal, ex.: Elgin i9 80 mm) ---------- */
+.cupom{display:none}
+@media print{
+  body.estacao > *:not(#cupom){display:none!important}
+  body.estacao{display:block;background:#fff;color:#000;min-height:0}
+  #cupom{display:block!important;width:var(--cupom-w,72mm);margin:0;padding:2mm 0 8mm;color:#000;background:#fff;
+    font-family:Consolas,'Courier New',monospace;font-size:12px;line-height:1.35}
+  #cupom .c{text-align:center}
+  #cupom .b{font-weight:700}
+  #cupom hr{border:0;border-top:1px dashed #000;margin:6px 0}
+  #cupom .k{display:flex;justify-content:space-between;gap:6px}
+  #cupom .h{font-size:9px;word-break:break-all}
+}
+
+/* ---------- espelho de ponto (painel) ---------- */
+.espelho .esp-topo{text-align:center;margin-bottom:10px}
+.espelho .esp-empresa{font-size:24px;font-weight:700;letter-spacing:.5px}
+.espelho .esp-sub{margin-top:4px;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.5px}
+.espelho .esp-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0;flex-wrap:wrap}
+.espelho .esp-func{display:flex;gap:10px;align-items:center;background:var(--warnbg);border:.5px solid var(--warnline);border-radius:6px;padding:6px 12px}
+.espelho .esp-func span{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+.espelho .esp-corpo{display:flex;flex-direction:column-reverse;gap:14px}
+.espelho .esp-tab{min-width:0}
+.espelho .esp-lado{display:flex;flex-direction:row;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.espelho .esp-caixa{width:230px}
+.espelho .esp-caixa-t{background:var(--line);text-align:center;font-weight:700;font-size:12px;padding:5px;letter-spacing:.4px;color:#1a1a18}
+table.esp th{text-align:center}
+table.esp thead th{position:sticky;top:0}
+table.esp td{text-align:center;padding:4px 6px}
+table.esp td.c{font-style:italic;color:var(--mut)}
+table.esp td.n{text-align:center}
+table.esp td.obs{text-align:left;font-size:11px;min-width:120px}
+table.esp td.banco{font-weight:600}
+table.esp tr.inc td{background:var(--warnbg)}
+table.esp tr.comp td{background:var(--infobg)}
+table.esp tr.falta td.c{color:var(--bad);font-style:normal}
+table.esp tfoot th{background:var(--bg);color:var(--ink);text-align:center}
+.so-print{display:none}
+@media print{
+  .so-print.assinaturas{display:flex;justify-content:space-around;margin-top:28px;text-align:center;font-size:11px}
+  .espelho .esp-lado{gap:8px}
+  .espelho .esp-caixa{width:170px}
+  .espelho .esp-empresa{font-size:18px}
+  table.esp thead th{position:static}
+  table.esp th,table.esp td{font-size:9px;padding:2px 3px}
+  .espelho .badge{border:none;padding:0;background:none}
+}
