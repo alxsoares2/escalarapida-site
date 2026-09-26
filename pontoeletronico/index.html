@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Ponto — Marcação</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-<link rel="stylesheet" href="ponto.css?v=20260926d" />
+<link rel="stylesheet" href="ponto.css?v=20260927a" />
 </head>
 <body class="estacao">
 
@@ -23,11 +23,25 @@
 </div>
 
 <main class="est-corpo" id="corpo"></main>
+
+<!-- Modo totem (estação com reconhecimento facial): a câmera é a tela inicial -->
+<div class="totem" id="totem" hidden>
+  <div class="totem-cam" id="totem-cam"></div>
+  <div class="totem-oval" id="totem-oval"></div>
+  <div class="totem-topo">
+    <div class="totem-hora" id="totem-hora">--:--</div>
+    <div class="totem-data" id="totem-data"></div>
+    <div class="totem-est" id="totem-est"></div>
+  </div>
+  <div class="totem-painel" id="totem-painel"></div>
+  <button type="button" class="totem-pin" id="totem-pin"><i class="ti ti-dialpad"></i> Marcar com PIN</button>
+</div>
 <div id="cupom" class="cupom" aria-hidden="true" style="display:none"></div>
 
-<script src="config.js?v=20260926d"></script>
-<script src="api.js?v=20260926d"></script>
-<script src="foto.js?v=20260926d"></script>
+<script src="config.js?v=20260927a"></script>
+<script src="api.js?v=20260927a"></script>
+<script src="foto.js?v=20260927a"></script>
+<script src="rosto.js?v=20260927a"></script>
 <script>
 (function () {
   const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
@@ -81,13 +95,17 @@
     const d = agora();
     $('relogio').textContent = d.toLocaleTimeString('pt-BR', { timeZone: window.Ponto.TZ });
     $('data').textContent = d.toLocaleDateString('pt-BR', { timeZone: window.Ponto.TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (totemAtivo) {
+      $('totem-hora').textContent = d.toLocaleTimeString('pt-BR', { timeZone: window.Ponto.TZ, hour: '2-digit', minute: '2-digit' });
+      $('totem-data').textContent = $('data').textContent;
+    }
   }
   setInterval(() => { if (info) tick(); }, 1000);
 
   /* ---------- controle de ociosidade ---------- */
   function armarOciosidade() {
     clearTimeout(ocioso);
-    ocioso = setTimeout(irParaLista, 45000);
+    ocioso = setTimeout(() => inicio(), 45000);
   }
   ['click', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => { if (sel) armarOciosidade(); }));
 
@@ -133,12 +151,18 @@
     $('est-empresa').textContent = (r.empresas.length === 1 ? nomes + ' · ' : '') + r.estacao.nome;
     $('topo-empresa').textContent = nomes;
     $('bloco-relogio').hidden = false;
+    $('totem-est').textContent = nomes + ' · ' + r.estacao.nome;
     tick();
-    irParaLista();
-    // Estação com foto: câmera sempre ligada; a foto é o quadro do instante do toque em "Registrar".
-    if (r.estacao.tira_foto && window.PontoFoto) window.PontoFoto.ligar($('cam-vivo')).then(sinal);
+    inicio();
+    // Estação com foto: câmera sempre ligada; a foto é o quadro do instante do toque em "Registrar"
+    // (no totem, o quadro usado no reconhecimento).
+    if (r.estacao.tira_foto && window.PontoFoto) window.PontoFoto.ligar(modoTotem() ? $('totem-cam') : $('cam-vivo')).then(sinal);
     else { if (window.PontoFoto) window.PontoFoto.desligar(); $('cam-vivo').hidden = true; sinal(); }
   }
+
+  const modoTotem = () => !!(info && info.estacao.reconhece_rosto && info.estacao.tira_foto && window.PontoRosto && window.PontoFoto);
+  // Tela inicial: câmera (totem) ou lista de nomes.
+  function inicio(aviso) { return modoTotem() ? telaTotem(aviso) : irParaLista(aviso); }
 
   // Sinal de vida para o quadro de saúde do painel (último contato e diferença do relógio).
   async function sinal() {
@@ -156,6 +180,7 @@
   function irParaLista(aviso) {
     limpar();
     if (!info) return;
+    sairDoTotem();
     const emp = info.empresas.find((e) => e.id === empAtual) || { funcionarios: [] };
     const lista = emp.funcionarios;
     const abas = info.empresas.length > 1
@@ -166,7 +191,9 @@
       '<h2 style="text-align:center;font-size:15px;color:var(--mut);margin-bottom:14px;font-weight:500">Quem é você?</h2>' +
       (lista.length
         ? '<div class="nomes">' + lista.map((f) => '<button class="nome-btn" data-id="' + f.id + '">' + esc(f.nome) + '</button>').join('') + '</div>'
-        : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>');
+        : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>') +
+      (modoTotem() ? '<div class="voltar"><button class="btn" id="voltar-totem"><i class="ti ti-face-id"></i> Voltar para o reconhecimento</button></div>' : '');
+    if ($('voltar-totem')) $('voltar-totem').onclick = () => telaTotem();
     corpo.querySelectorAll('.emp-tab').forEach((b) => b.onclick = () => { empAtual = Number(b.dataset.emp); irParaLista(); });
     corpo.querySelectorAll('.nome-btn').forEach((b) => b.onclick = () => {
       sel = lista.find((f) => f.id === Number(b.dataset.id)); pin = ''; telaPin();
@@ -175,6 +202,171 @@
     // recarrega a lista de tempos em tempos (novos funcionários)
     clearTimeout(irParaLista.t);
     irParaLista.t = setTimeout(() => { if (!sel) carregar(); }, 5 * 60 * 1000);
+  }
+
+  /* ---------- modo totem: reconhecimento facial (especificação 11.4A) ---------- */
+  const CONTAGEM_SEG = Number(CFG.totemContagemSeg) || 3;    // contagem antes de gravar sozinho
+  const INTERVALO_MS = Number(CFG.totemIntervaloMs) || 250;  // entre análises da câmera
+  const FALHA_MS = Number(CFG.totemFalhaMs) || 5000;        // rosto na frente sem reconhecer: avisa depois disso
+  let totemAtivo = false, laco = null, recarga = null, contagem = null;
+  let estadoT = 'espera', estavel = 0, falhasDesde = 0, pausaAte = 0;
+
+  function painel(html) { $('totem-painel').innerHTML = html; }
+  function aviso(texto, tipo) { painel('<div class="totem-msg ' + (tipo || '') + '">' + esc(texto) + '</div>'); }
+
+  async function telaTotem(msg) {
+    limpar();
+    clearInterval(contagem);
+    corpo.innerHTML = '';
+    $('bloco-relogio').hidden = true;
+    $('totem').hidden = false;
+    totemAtivo = true;
+    tick();
+    window.PontoFoto.ligar($('totem-cam'));
+    $('totem-pin').onclick = () => irParaLista();
+    // de tempos em tempos relê a configuração da estação (ex.: reconhecimento desligado no painel)
+    clearTimeout(recarga);
+    recarga = setTimeout(() => { if (totemAtivo && estadoT === 'espera') carregar(); }, 10 * 60 * 1000);
+    if (!window.PontoRosto.pronto()) {
+      estadoT = 'carregando';
+      aviso('Carregando o reconhecimento…');
+      try { await window.PontoRosto.iniciar(); } catch (e) {
+        estadoT = 'indisponivel';
+        return aviso('Reconhecimento indisponível neste aparelho. Toque em "Marcar com PIN".', 'erro');
+      }
+      if (!totemAtivo) return;
+    }
+    espera(msg);
+    agendar();
+  }
+
+  function sairDoTotem() {
+    if (!totemAtivo) return;
+    totemAtivo = false;
+    clearTimeout(laco); clearTimeout(recarga); clearInterval(contagem);
+    $('totem').hidden = true;
+    $('bloco-relogio').hidden = false;
+    if (info.estacao.tira_foto && window.PontoFoto) window.PontoFoto.ligar($('cam-vivo'));
+  }
+
+  function espera(msg) {
+    estadoT = 'espera'; estavel = 0;
+    $('totem-oval').className = 'totem-oval';
+    if (msg && msg.texto) { aviso(msg.texto, msg.tipo); pausaAte = Date.now() + 2500; }
+    else aviso('Aproxime o rosto');
+  }
+  function agendar() { clearTimeout(laco); if (totemAtivo) laco = setTimeout(passo, INTERVALO_MS); }
+
+  async function passo() {
+    if (!totemAtivo) return;
+    if (estadoT === 'espera' && Date.now() >= pausaAte) {
+      const v = window.PontoFoto.video();
+      let a = null;
+      try { a = v ? await window.PontoRosto.analisar(v) : null; } catch (e) { a = null; }
+      if (totemAtivo && estadoT === 'espera') await avaliar(a);
+    }
+    agendar();
+  }
+
+  // Só reconhece com um rosto único, perto, de frente e parado por 2 análises seguidas.
+  async function avaliar(a) {
+    const oval = $('totem-oval');
+    if (!a || !a.rostos) { estavel = 0; falhasDesde = 0; oval.className = 'totem-oval'; return aviso('Aproxime o rosto'); }
+    if (a.rostos > 1) { estavel = 0; return aviso('Uma pessoa por vez'); }
+    const r = a.rosto;
+    if (r.largura < 0.18) { estavel = 0; return aviso('Chegue um pouco mais perto'); }
+    if (Math.abs(r.yaw) > 0.35 || Math.abs(r.pitch) > 0.35) { estavel = 0; return aviso('Olhe de frente para a câmera'); }
+    oval.className = 'totem-oval ok';
+    if (++estavel < 2 || !r.descritor) return aviso('Fique parado…');
+    await reconhecer(r);
+  }
+
+  async function reconhecer(r) {
+    estadoT = 'reconhecendo';
+    aviso('Reconhecendo…');
+    const foto = await window.PontoFoto.capturarAgora();   // o quadro do reconhecimento é a foto de prova
+    const resp = await rpc('reconhecer', { token, descritor: r.descritor, antispoof: r.antispoof, liveness: r.liveness });
+    if (!totemAtivo) return;
+    if (!resp.ok) {
+      if (resp.erro === 'estacao_invalida' || resp.erro === 'rosto_desligado') return carregar();
+      estadoT = 'espera'; estavel = 0; pausaAte = Date.now() + 2500;
+      return aviso(msgErro(resp.erro), 'erro');
+    }
+    if (!resp.reconhecido) {
+      estadoT = 'espera'; estavel = 0;
+      if (!falhasDesde) falhasDesde = Date.now();
+      if (Date.now() - falhasDesde >= FALHA_MS) {
+        falhasDesde = 0; pausaAte = Date.now() + 3000;
+        return aviso('Não reconhecemos. Tente de novo ou toque em "Marcar com PIN".', 'erro');
+      }
+      pausaAte = Date.now() + 400;
+      return;
+    }
+    falhasDesde = 0;
+    if (resp.recente) {
+      rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento });
+      estadoT = 'espera'; estavel = 0; pausaAte = Date.now() + 3000;
+      return aviso('Você acabou de marcar, ' + resp.funcionario.nome + '.', 'ok');
+    }
+    confirmar(resp, foto);
+  }
+
+  // Contagem com o tipo sugerido; sem toque, grava sozinho. "Trocar" e "Não sou eu" param a contagem.
+  function confirmar(resp, foto) {
+    estadoT = 'confirmando';
+    let seg = CONTAGEM_SEG;
+    const f = resp.funcionario;
+    const outros = resp.opcoes.filter((t) => t !== resp.sugestao);
+    painel('<div class="totem-card"><div class="totem-nome">' + esc(f.nome) + '</div><div class="totem-emp">' + esc(f.empresa) + '</div>' +
+      '<div class="totem-tipo">' + esc(TIPOS[resp.sugestao]).toUpperCase() + '</div>' +
+      '<div class="totem-cont" id="t-cont"></div>' +
+      '<div class="totem-acoes">' + (outros.length ? '<button class="btn" id="t-trocar"><i class="ti ti-switch-horizontal"></i> Trocar</button>' : '') +
+      '<button class="btn bad" id="t-nao">Não sou eu</button></div></div>');
+    const mostrar = () => { $('t-cont').textContent = 'Registrando em ' + seg + '…'; };
+    mostrar();
+    clearInterval(contagem);
+    contagem = setInterval(() => {
+      if (--seg <= 0) { clearInterval(contagem); gravar(resp, resp.sugestao, foto); } else mostrar();
+    }, 1000);
+    if ($('t-trocar')) $('t-trocar').onclick = () => {
+      clearInterval(contagem);
+      painel('<div class="totem-card"><div class="totem-nome">' + esc(f.nome) + '</div><div class="totem-emp">Qual marcação?</div>' +
+        '<div class="totem-acoes" style="margin-top:12px">' + resp.opcoes.map((t) =>
+          '<button class="btn pri" data-t-tipo="' + esc(t) + '">' + esc(TIPOS[t]) + '</button>').join('') +
+        '<button class="btn" id="t-cancelar">Cancelar</button></div></div>');
+      $('totem-painel').querySelectorAll('[data-t-tipo]').forEach((b) => b.onclick = () => gravar(resp, b.dataset.tTipo, foto));
+      $('t-cancelar').onclick = () => { rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento }); espera(); };
+      // sem escolha em 15 s, desiste (o reconhecimento vence em 60 s de qualquer forma)
+      contagem = setTimeout(() => { if (estadoT === 'confirmando') { rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento }); espera(); } }, 15000);
+    };
+    $('t-nao').onclick = () => {
+      clearInterval(contagem);
+      rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento });
+      espera({ texto: 'Tudo bem. Tente de novo ou toque em "Marcar com PIN".', tipo: '' });
+    };
+  }
+
+  async function gravar(resp, tipo, foto) {
+    clearInterval(contagem); clearTimeout(contagem);
+    if (estadoT !== 'confirmando') return;
+    estadoT = 'gravando';
+    aviso('Registrando…');
+    let fotoHash = null;
+    if (foto) { try { fotoHash = await window.PontoFoto.hash(foto); } catch (e) { foto = null; } }
+    const r = await rpc('registrar_rosto', { token, reconhecimento: resp.reconhecimento, tipo, foto_hash: fotoHash });
+    if (!r.ok) {
+      estadoT = 'espera'; estavel = 0; pausaAte = Date.now() + 3000;
+      return aviso(msgErro(r.erro), 'erro');
+    }
+    if (foto && r.marcacao_id) window.PontoFoto.enviar(foto, { token, marcacaoId: r.marcacao_id });
+    if (imprime()) setTimeout(() => imprimirCupom(r.comprovante), 150);
+    const c = r.comprovante;
+    estadoT = 'comprovante';
+    painel('<div class="totem-card ok"><div class="totem-ok"><i class="ti ti-circle-check"></i></div>' +
+      '<div class="totem-tipo">' + esc(TIPOS[c.tipo]) + ' registrada às ' + esc(hora(c.marcado_em)) + '</div>' +
+      '<div class="totem-nome" style="font-size:20px">' + esc(c.funcionario) + '</div>' +
+      '<div class="totem-emp">' + esc(c.empresa) + ' · NSR ' + esc(c.nsr) + '</div></div>');
+    setTimeout(() => { if (totemAtivo && estadoT === 'comprovante') espera(); }, 4000);
   }
 
   function telaPin(erro) {
@@ -196,7 +388,7 @@
   }
   function desenharPontos() { const d = $('dots'); if (d) d.innerHTML = '<i></i>'.repeat(pin.length); }
   function tecla(k) {
-    if (k === 'cancelar') return irParaLista();
+    if (k === 'cancelar') return inicio();
     if (k === 'apagar') pin = pin.slice(0, -1);
     else if (pin.length < 6) pin += k;
     desenharPontos();
@@ -206,7 +398,7 @@
     if (/^[0-9]$/.test(e.key)) tecla(e.key);
     else if (e.key === 'Backspace') tecla('apagar');
     else if (e.key === 'Enter') confirmarPin();
-    else if (e.key === 'Escape') irParaLista();
+    else if (e.key === 'Escape') inicio();
   });
 
   async function confirmarPin() {
@@ -234,7 +426,7 @@
       '<button class="btn" id="sair" style="justify-content:center">Sair</button>' +
       '</div><div id="lista-ult"></div>';
     corpo.querySelectorAll('[data-tipo]').forEach((b) => b.onclick = () => registrar(b.dataset.tipo));
-    $('sair').onclick = () => irParaLista();
+    $('sair').onclick = () => inicio();
     $('pedir').onclick = () => telaCorrecao();
     $('ver-marcacoes').onclick = () => {
       const u = estado.ultimas;
@@ -281,7 +473,7 @@
       '<dt>Hash</dt><dd class="hash">' + esc(c.hash) + '</dd></dl></div>' +
       '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button>' +
       (imprime() ? ' <button class="btn" id="reimprimir"><i class="ti ti-printer"></i> Reimprimir</button>' : '') + ' <span class="muted" id="cont"></span></div>';
-    $('fechar').onclick = () => irParaLista();
+    $('fechar').onclick = () => inicio();
     // imprime sozinho (se a estação imprime); com o Chrome em modo --kiosk-printing sai direto na impressora padrão
     if (imprime()) {
       $('reimprimir').onclick = () => imprimirCupom(c);
@@ -290,7 +482,7 @@
     pin = '';
     const cont = () => { $('cont').textContent = 'voltando em ' + seg + 's'; };
     cont();
-    volta = setInterval(() => { seg--; if (seg <= 0) { clearInterval(volta); irParaLista(); } else cont(); }, 1000);
+    volta = setInterval(() => { seg--; if (seg <= 0) { clearInterval(volta); inicio(); } else cont(); }, 1000);
     // o funcionário pode tirar print do comprovante; a lista de 48 h fica disponível ao entrar de novo
   }
 
@@ -317,7 +509,7 @@
         if (['pin_invalido', 'bloqueado'].includes(r.erro)) return irParaLista({ texto: msgErro(r.erro), tipo: 'erro' });
         return telaCorrecao(msgErro(r.erro));
       }
-      irParaLista({ texto: 'Pedido enviado. O gestor vai analisar.', tipo: 'ok' });
+      inicio({ texto: 'Pedido enviado. O gestor vai analisar.', tipo: 'ok' });
     };
   }
 

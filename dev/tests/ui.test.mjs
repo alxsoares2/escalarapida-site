@@ -3,7 +3,7 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { readFileSync } from 'node:fs';
-import { novoBanco, cenario, fixarRelogio, dia, rpc, CHEIO } from './helpers.mjs';
+import { novoBanco, cenario, fixarRelogio, dia, rpc, CHEIO, pessoa, quase } from './helpers.mjs';
 
 const RAIZ = new URL('../../pontoeletronico/', import.meta.url);
 const abertas = [];
@@ -11,14 +11,16 @@ const abertas = [];
 after(() => { for (const d of abertas) { try { d.window.close(); } catch (e) { /* já fechada */ } } });
 
 // foto: código que substitui foto.js (câmera simulada; o jsdom não tem câmera).
-async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = {}, foto = null } = {}) {
+// rosto: código que substitui rosto.js (reconhecimento simulado); config: campos a mais em PONTO_CONFIG.
+async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = {}, foto = null, rosto = null, config = {} } = {}) {
   const arquivo = new URL(caminho, RAIZ);
   const pasta = new URL('./', arquivo);
   let html = readFileSync(arquivo, 'utf8');
   html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) => {
     const arq = src.split('?')[0];
     if (arq.endsWith('foto.js') && foto) return `<script>${foto}</script>`;
-    if (arq.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80};</script>`;
+    if (arq.endsWith('rosto.js') && rosto) return `<script>${rosto}</script>`;
+    if (arq.endsWith('config.js')) return `<script>window.PONTO_CONFIG=Object.assign({url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80},${JSON.stringify(config)});</script>`;
     return `<script>${readFileSync(new URL(arq, pasta), 'utf8')}</script>`;
   });
   const erros = [];
@@ -403,13 +405,13 @@ test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
 });
 
 // Câmera simulada (o jsdom não tem câmera): "ligar" mostra a imagem ao vivo, "capturarAgora" devolve um arquivo fixo.
-const CAMERA_OK = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0,
+const CAMERA_OK = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0, video: () => ({ videoWidth: 640 }),
   ligar: async (el) => { el.innerHTML = '<video></video>'; el.hidden = false; window.PontoFoto.ligada = true; window.PontoFoto.cameraOk = true; return true; },
   desligar: () => { window.PontoFoto.ligada = false; },
   capturarAgora: async () => { window.PontoFoto.capturas++; return { type: 'image/webp', fake: true }; },
   hash: async () => '${'a'.repeat(64)}',
   enviar: async (blob, d) => { window.PontoFoto.enviados.push(d); return true; } };`;
-const CAMERA_QUEBRADA = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0,
+const CAMERA_QUEBRADA = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0, video: () => null,
   ligar: async (el) => { el.hidden = true; window.PontoFoto.cameraOk = false; return false; },
   desligar: () => {},
   capturarAgora: async () => { window.PontoFoto.capturas++; return null; },
@@ -521,6 +523,183 @@ test('painel: relatório de marcações e fotos, espaço e câmera', async (t) =
     p.clicar(p.$('[data-edes]'));
     await p.esperar(() => p.$('#es-foto'), 'formulário');
     assert.equal(p.$('#es-foto').checked, true);
+    p.fechar();
+  });
+});
+
+// Reconhecimento simulado: analisar() devolve window.__rosto (o teste troca quando quiser);
+// window.__poses (lista) é consumida antes, uma análise por item.
+const RECONHECIMENTO = `window.__rosto = { rostos: 0 }; window.__poses = [];
+  window.PontoRosto = { pronto: () => !!window.__pronto, iniciar: async () => { if (window.__falhaCarregar) throw new Error('sem webgl'); window.__pronto = true; return true; },
+    analisar: async () => window.__poses.length ? window.__poses.shift() : window.__rosto };`;
+const ANA = pessoa(1);
+const olhando = (descritor, extra = {}) => ({ rostos: 1, rosto: { descritor, antispoof: 0.9, liveness: 0.9, yaw: 0, pitch: 0, largura: 0.3, ...extra } });
+const RAPIDO = { totemContagemSeg: 1, totemIntervaloMs: 20, totemFalhaMs: 200 };
+
+test('totem: reconhecimento facial', async (t) => {
+  const db = await novoBanco();
+  const c = await cenario(db);
+  await db.exec(`update ponto.estacao set nome = 'Tablet', imprime = false, tira_foto = true, reconhece_rosto = true`);
+  await db.query(`insert into ponto.rosto (funcionario_id, posicao, descritor, criado_em) values (1, 'frente', $1::real[], now())`, [ANA]);
+  await fixarRelogio(db, '2026-09-14 10:00');
+  const ls = { ponto_estacao_token: c.token };
+  const abrirTotem = () => abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK, rosto: RECONHECIMENTO, config: RAPIDO });
+  const marcacoes = async () => (await db.query(`select tipo::text t, origem_identificacao o, sem_rosto s, foto_hash is not null f from ponto.marcacao order by id`)).rows;
+
+  await t.test('a tela inicial é a câmera, com relógio e "Aproxime o rosto"', async () => {
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    assert.equal(p.$('#totem').hidden, false);
+    assert.equal(p.$('#bloco-relogio').hidden, true);
+    assert.match(p.$('#totem-hora').textContent, /^\d\d:\d\d$/);
+    assert.ok(p.$('#totem-cam video'), 'câmera ligada dentro do totem');
+    assert.equal(p.$('.nome-btn'), null, 'sem lista de nomes');
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('olhou para a câmera: nome, tipo sugerido e grava sozinho depois da contagem', async () => {
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = olhando(quase(ANA));
+    await p.esperar(() => p.$('.totem-card') && p.texto().includes('ENTRADA'), 'contagem');
+    assert.match(p.$('.totem-card').textContent, /Ana/);
+    assert.match(p.$('.totem-card').textContent, /Basílico/);
+    assert.equal(p.$('#t-trocar'), null, 'só uma opção: sem "Trocar"');
+    await p.esperar(() => p.texto().includes('Entrada registrada às'), 'gravou sozinho', 5000);
+    assert.deepEqual(await marcacoes(), [{ t: 'entrada', o: 'rosto', s: false, f: true }]);
+    await p.esperar(() => p.w.PontoFoto.enviados.length === 1, 'foto enviada');
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('"Trocar": escolhe outra marcação válida', async () => {
+    await fixarRelogio(db, '2026-09-14 13:00');
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = olhando(ANA);
+    await p.esperar(() => p.$('#t-trocar'), 'botão Trocar');
+    assert.match(p.$('.totem-tipo').textContent, /SAÍDA PARA INTERVALO/);
+    p.clicar(p.$('#t-trocar'));
+    await p.esperar(() => p.$('[data-t-tipo="saida"]'), 'opções');
+    p.clicar(p.$('[data-t-tipo="saida"]'));
+    await p.esperar(() => p.texto().includes('Saída registrada às'), 'gravou a escolhida');
+    assert.equal((await marcacoes()).at(-1).t, 'saida');
+    p.fechar();
+  });
+
+  await t.test('"Não sou eu": não grava nada', async () => {
+    await fixarRelogio(db, '2026-09-15 10:00');
+    const antes = (await marcacoes()).length;
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = olhando(ANA);
+    await p.esperar(() => p.$('#t-nao'), 'contagem');
+    p.w.__rosto = { rostos: 0 };
+    p.clicar(p.$('#t-nao'));
+    await p.esperar(() => p.texto().includes('Tudo bem'), 'cancelado');
+    await new Promise((r) => setTimeout(r, 1300));
+    assert.equal((await marcacoes()).length, antes);
+    const ult = (await db.query(`select resultado from ponto.reconhecimento order by id desc limit 1`)).rows[0].resultado;
+    assert.equal(ult, 'cancelado');
+    p.fechar();
+  });
+
+  await t.test('rosto desconhecido: avisa e sugere o PIN; dois rostos: um por vez', async () => {
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = { rostos: 2 };
+    await p.esperar(() => p.texto().includes('Uma pessoa por vez'), 'dois rostos');
+    p.w.__rosto = olhando(pessoa(77));
+    await p.esperar(() => p.texto().includes('Não reconhecemos'), 'não reconhecido', 5000);
+    p.fechar();
+  });
+
+  await t.test('"Marcar com PIN": lista de nomes, marca com alerta sem_rosto e volta para a câmera', async () => {
+    await fixarRelogio(db, '2026-09-15 10:05');
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.clicar(p.$('#totem-pin'));
+    await p.esperar(() => p.d.querySelectorAll('.nome-btn').length === 2, 'lista de nomes');
+    assert.equal(p.$('#totem').hidden, true);
+    assert.ok(p.$('#voltar-totem'));
+    p.clicar(p.d.querySelectorAll('.nome-btn')[0]);
+    await p.esperar(() => p.$('.keypad'), 'teclado');
+    await tecl(p, '1234'); p.clicar(p.$('#ok'));
+    await p.esperar(() => p.$('[data-tipo="entrada"]'), 'botão de entrada');
+    p.clicar(p.$('[data-tipo="entrada"]'));
+    await p.esperar(() => p.$('.comprovante'), 'comprovante');
+    assert.deepEqual((await marcacoes()).at(-1), { t: 'entrada', o: 'pin', s: true, f: true });
+    p.clicar(p.$('#fechar'));
+    await p.esperar(() => !p.$('#totem').hidden && p.texto().includes('Aproxime o rosto'), 'de volta ao totem');
+    p.fechar();
+  });
+
+  await t.test('sem WebGL/rede para o reconhecimento: avisa e o PIN continua funcionando', async () => {
+    const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK, rosto: RECONHECIMENTO + 'window.__falhaCarregar = true;', config: RAPIDO });
+    await p.esperar(() => p.texto().includes('Reconhecimento indisponível'), 'aviso');
+    p.clicar(p.$('#totem-pin'));
+    await p.esperar(() => p.d.querySelectorAll('.nome-btn').length, 'lista de nomes');
+    p.fechar();
+  });
+});
+
+test('painel: cadastro do rosto em 5 posições', async (t) => {
+  const db = await novoBanco();
+  await cenario(db);
+  await db.exec(`update ponto.estacao set reconhece_rosto = true, tira_foto = true;
+    insert into ponto.admin (email, senha_hash) values ('dono@teste.com', extensions.crypt('senha-teste', extensions.gen_salt('bf', 4)));`);
+  await fixarRelogio(db, '2026-09-14 10:00');
+  const sessao = (await rpc(db, 'admin_login', { email: 'dono@teste.com', senha: 'senha-teste' })).sessao;
+  const ss = { ponto_admin_sessao: sessao };
+  const pose = (yaw, pitch) => olhando(ANA, { yaw, pitch });
+  // cada posição precisa de 2 análises seguidas
+  const POSES = [pose(0, 0), pose(0, 0), pose(0.3, 0), pose(0.3, 0), pose(0.3, 0), pose(-0.3, 0), pose(-0.3, 0),
+                 pose(0, 0.3), pose(0, 0.3), pose(0, 0.3), pose(0, -0.3), pose(0, -0.3)];
+
+  await t.test('funcionário sem cadastro -> cadastra no tablet -> 5 amostras no banco', async () => {
+    const p = await abrir(db, 'admin/index.html', { sessionStorage: ss, foto: CAMERA_OK, rosto: RECONHECIMENTO, config: RAPIDO });
+    await p.esperar(() => p.texto().includes('sem cadastro'), 'lista com a coluna Rosto');
+    p.clicar(p.$('[data-ed="1"]'));
+    await p.esperar(() => p.$('#r-cadastrar'), 'botão cadastrar');
+    p.w.__poses = POSES.slice();
+    p.w.__rosto = { rostos: 0 };
+    p.clicar(p.$('#r-cadastrar'));
+    await p.esperar(() => p.texto().includes('Rosto de Ana cadastrado'), 'cadastro salvo', 6000);
+    const r = (await db.query(`select posicao from ponto.rosto where funcionario_id = 1 order by id`)).rows.map((x) => x.posicao);
+    assert.deepEqual(r, ['frente', 'lado_a', 'lado_b', 'vertical_a', 'vertical_b']);
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('segundo "lado" para o mesmo lado não conta', async () => {
+    const p = await abrir(db, 'admin/index.html', { sessionStorage: ss, foto: CAMERA_OK, rosto: RECONHECIMENTO, config: RAPIDO });
+    await p.esperar(() => p.$('[data-ed="1"]'), 'lista');
+    p.clicar(p.$('[data-ed="1"]'));
+    await p.esperar(() => p.$('#r-cadastrar'), 'botão refazer');
+    assert.match(p.$('#r-cadastrar').textContent, /Refazer/);
+    p.w.__poses = [pose(0, 0), pose(0, 0), pose(0.3, 0), pose(0.3, 0)];
+    p.w.__rosto = pose(0.3, 0);   // fica virado para o mesmo lado
+    p.clicar(p.$('#r-cadastrar'));
+    await p.esperar(() => p.texto().includes('Agora um pouco para o outro lado'), 'pede o outro lado');
+    await new Promise((r) => setTimeout(r, 300));
+    assert.match(p.texto(), /Agora um pouco para o outro lado/);
+    p.clicar(p.$('#cad-x'));
+    p.fechar();
+  });
+
+  await t.test('estação: "Reconhece rosto" liga a foto junto', async () => {
+    const p = await abrir(db, 'admin/index.html', { sessionStorage: ss, foto: CAMERA_OK, rosto: RECONHECIMENTO });
+    await p.esperar(() => p.$('.tabs'), 'painel');
+    p.clicar(p.$('[data-tab="config"]'));
+    await p.esperar(() => p.$('[data-edes]'), 'estações');
+    assert.match(p.texto(), /Principal · imprime · rosto/);
+    assert.match(p.texto(), /Reconhecimento facial: últimas tentativas/);
+    p.clicar(p.$('[data-edes]'));
+    await p.esperar(() => p.$('#es-rosto'), 'formulário');
+    assert.equal(p.$('#es-rosto').checked, true);
+    assert.equal(p.$('#es-foto').checked, true);
+    assert.equal(p.$('#es-foto').disabled, true);
     p.fechar();
   });
 });

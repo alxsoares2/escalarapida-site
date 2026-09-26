@@ -50,17 +50,18 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/index.html` | Tela do computador do balcão: escolhe o nome, digita o PIN, marca (entrada, saída p/ intervalo, volta, saída), comprovante, pedido de correção |
 | `pontoeletronico/admin/` | Painel do gestor: funcionários e jornadas, domingos de folga e exceções, correções, relatórios (espelho mensal/PDF, banco de horas, faltas), empresas e estações |
 | `pontoeletronico/api.js`, `config.js`, `ponto.css` | Cliente da API, configuração pública, estilo |
+| `pontoeletronico/rosto.js` | Reconhecimento facial no navegador (biblioteca `@vladmandic/human` 3.3.6 via jsDelivr): descritor do rosto e notas de prova de vida; a comparação é no banco |
 | `pontoeletronico/foto.js` | Câmera da foto de prova: sempre ligada na tela da estação, captura no toque (240 px, WebP), SHA-256 e envio pela Edge Function |
 | `dev/supabase/functions/ponto-foto/` | Edge Function das fotos: `handler.js` (lógica, testada no Node) + `index.ts` (liga ao banco e ao Storage). Fica em `dev/`, bloqueada no site |
-| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0009, todas aplicadas (0009 = fase 2, foto) |
-| `dev/tests/` | 146 testes: regras de apuração, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
+| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0010, todas aplicadas (0010 = fase 2A, reconhecimento facial) |
+| `dev/tests/` | 180 testes: regras de apuração, reconhecimento facial,, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 146 testes, ~60 s, não toca no banco real
+npm test                                                                   # 180 testes, ~90 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
 npx supabase functions deploy ponto-foto --project-ref dhmlltvdyhavpoyazaph --no-verify-jwt --workdir .   # publica a Edge Function das fotos (precisa de `npx supabase login` uma vez)
@@ -159,7 +160,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 - [ ] **Ponto, versão 2** (tablet, foto como prova, comprovante pelo WhatsApp do Marcus, marcação sem internet, backup no Drive, saúde das estações). Especificação aprovada em 26/09/2026: `docs/ponto/ESPECIFICACAO.md`, seção 11. Fases:
   - [x] Fase 1 (no ar desde 26/09/2026): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 aplicada e tela publicada em 26/09/2026 (commit `5e6feae`).
   - [x] Fase 2 (no ar desde 26/09/2026): foto como prova (câmera com contagem, 240 px WebP, hash na cadeia), Edge Function `ponto-foto`, compartimento privado `ponto-fotos`, relatório "Marcações e fotos", espaço usado, câmera no quadro de saúde. Migration 0009 aplicada, Edge Function publicada e tela publicada. Ainda não testada com câmera real: ligar "Tira foto de prova" na estação do tablet e conferir no relatório "Marcações e fotos". Expurgo das fotos vencidas fica na fase 4.
-  - [ ] Fase 2A: reconhecimento facial (rosto identifica, PIN como reserva, prova de vida sorteada). Calibrar no tablet real.
+  - [x] Fase 2A (código pronto e testado, **só local**): reconhecimento facial em modo totem (câmera como tela inicial, reconhece sem toque, tipo automático com contagem de 3 s, "Trocar"/"Não sou eu", prova de vida passiva, PIN como reserva com alerta `sem_rosto`), cadastro do rosto em 5 posições no painel, tentativas de reconhecimento no painel para calibrar. Migration 0010 aplicada em 26/09/2026 (pelo SQL Editor, conferida idêntica e anotada). **Falta:** publicar; cadastrar os rostos no tablet; calibrar o limiar (começa em 0,65) na primeira semana.
   - [ ] Fase 3: WhatsApp pelo Marcus + aviso de estação fora do ar (mexe no `marcus-assistente`).
   - [ ] Fase 4: backup (botão + Drive do RH + `manifest.txt`). Antes: confirmar backup sem PDF e o dono da pasta no Drive.
   - [ ] Fase 5: marcação sem internet (PIN cifrado com chave pública).
@@ -175,6 +176,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
 | 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
+| 26/09/2026 | Fase 2A implementada localmente: reconhecimento facial em modo totem (migration 0010, `rosto.js`); biblioteca real conferida em Chrome sem janela com fotos de exemplo; limiar inicial 0,65; 180 testes |
 | 26/09/2026 | Corrigido: com o aviso "Permitir câmera?" aberto, a tela pedia a câmera de novo a cada 10 s e o aviso sumia antes do clique. Agora é um pedido só, sem prazo; câmera bloqueada mostra instrução e botão "Ativar câmera"; marcar ponto nunca espera a câmera |
 | 26/09/2026 | Foto: câmera sempre ligada na tela (foto no instante do toque, sem contagem); religa sozinha |
 | 26/09/2026 | Fase 2 do ponto v2 publicada (foto como prova, Edge Function `ponto-foto`, migration 0009); 140 testes. Reconhecimento facial especificado como fase 2A |

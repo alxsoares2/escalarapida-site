@@ -71,6 +71,11 @@
     excecao_invalida: 'Exceção não encontrada.',
     empresa_obrigatoria: 'Escolha a empresa.',
     foto_invalida: 'Foto inválida.',
+    rosto_desligado: 'Reconhecimento facial desligado nesta estação.',
+    muitas_tentativas: 'Muitas tentativas seguidas. Aguarde um instante.',
+    descritor_invalido: 'Não foi possível ler o rosto. Tente de novo.',
+    reconhecimento_invalido: 'O reconhecimento expirou. Olhe para a câmera de novo.',
+    amostras_invalidas: 'Cadastro do rosto incompleto. Refaça as 5 posições.',
     funcao_desconhecida: 'Operação desconhecida.'
   };
   const msgErro = (c) => ERROS[c] || 'Não foi possível concluir (' + c + ').';

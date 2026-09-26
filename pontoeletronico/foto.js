@@ -60,6 +60,8 @@
 
   // Liga a câmera e mostra a imagem ao vivo em "container" (fica ligada até desligar()).
   function ligar(container) {
+    // câmera já ligada em outro lugar da tela (ex.: tela do totem -> fluxo do PIN): só muda o vídeo de lugar
+    if (container && alvo && container !== alvo && ativa()) { mover(container); return Promise.resolve(true); }
     if (container) alvo = container;
     if (!alvo) return Promise.resolve(false);
     if (ativa()) return Promise.resolve(true);
@@ -107,6 +109,17 @@
       }
       return false;
     }
+  }
+
+  function mover(container) {
+    alvo.hidden = true;
+    alvo.innerHTML = '';
+    container.innerHTML = '';
+    container.appendChild(video);
+    container.hidden = false;
+    alvo = container;
+    const p = video.play && video.play();
+    if (p && p.catch) p.catch(() => {});
   }
 
   function desligar() {
@@ -167,6 +180,6 @@
     return false;
   }
 
-  const PontoFoto = { ligar, desligar, capturarAgora, hash, enviar, cameraOk: null };
+  const PontoFoto = { ligar, desligar, capturarAgora, hash, enviar, video: () => (ativa() ? video : null), cameraOk: null };
   window.PontoFoto = PontoFoto;
 })();

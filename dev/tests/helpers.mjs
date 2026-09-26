@@ -60,3 +60,12 @@ export async function rpc(db, fn, args = {}) {
 }
 
 export const CHEIO = [['10:00', 'entrada'], ['13:00', 'saida_intervalo'], ['13:15', 'volta_intervalo'], ['16:15', 'saida']];
+
+// Descritores de rosto de teste: 1024 valores ±0,5 (pessoas diferentes ficam com similaridade 0);
+// "quase" = mesma pessoa com um pouco de ruído; "cinco" = as 5 posições do cadastro.
+export function pessoa(semente) {
+  let x = semente * 9301 + 49297;
+  return Array.from({ length: 1024 }, () => { x = (x * 9301 + 49297) % 233280; return x / 233280 < 0.5 ? -0.5 : 0.5; });
+}
+export const quase = (v, ruido = 0.01) => v.map((n, i) => n + (i % 2 ? ruido : -ruido));
+export const cinco = (v) => ['frente', 'lado_a', 'lado_b', 'vertical_a', 'vertical_b'].map((posicao, i) => ({ posicao, descritor: quase(v, i * 0.002) }));

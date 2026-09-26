@@ -169,8 +169,9 @@
     const el = $('aba');
     el.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0">Funcionários</h2>' +
       '<button class="btn sm pri" id="novo-f">+ Novo funcionário</button></div>' +
-      (S.funcs.length ? '<div class="scroll"><table class="t"><tr><th>Nome</th><th>Jornada</th><th class="n">Banco de horas</th><th>Situação</th><th></th></tr>' +
+      (S.funcs.length ? '<div class="scroll"><table class="t"><tr><th>Nome</th><th>Jornada</th><th class="n">Banco de horas</th><th>Rosto</th><th>Situação</th><th></th></tr>' +
         S.funcs.map((f) => '<tr><td>' + esc(f.nome) + '</td><td>' + resumoJornada(f.jornada) + '</td><td class="n">' + saldoTxt(f.saldo_banco_min) + '</td><td>' +
+          (f.rosto_amostras ? '<span class="badge ok">cadastrado</span>' : '<span class="badge">sem cadastro</span>') + '</td><td>' +
           (!f.ativo ? '<span class="badge">inativo</span>' : f.bloqueado_ate ? '<span class="badge bad">PIN bloqueado</span>' : '<span class="badge ok">ativo</span>') +
           '</td><td class="n"><button class="btn sm" data-ed="' + f.id + '">Editar</button></td></tr>').join('') + '</table></div>'
         : '<p class="muted">Nenhum funcionário nesta empresa.</p>') + '</div><div id="form-f"></div>';
@@ -191,7 +192,7 @@
       '<div class="field"><label for="f-inicio">Controlar a partir de</label><input type="date" id="f-inicio" value="' + esc(f ? f.inicio_controle : hojeISO()) + '"></div>' +
       (novo ? '' : '<div class="field" style="max-width:160px"><label for="f-ativo">Situação</label><select id="f-ativo"><option value="true"' + (f.ativo ? ' selected' : '') + '>Ativo</option><option value="false"' + (!f.ativo ? ' selected' : '') + '>Inativo</option></select></div>') + '</div>' +
       '<div><button class="btn pri" id="f-salvar">Salvar dados</button></div>' +
-      (novo ? '<p class="muted" style="margin-top:8px">Depois de salvar, defina a jornada.</p>' : formJornadaHtml(f, dias, j)) + '</div>';
+      (novo ? '<p class="muted" style="margin-top:8px">Depois de salvar, defina a jornada.</p>' : formJornadaHtml(f, dias, j) + formRostoHtml(f)) + '</div>';
     $('f-salvar').onclick = async () => {
       const saldo = parseMin(val('f-saldo'));
       if (saldo === null) return formFuncionario(f, 'Saldo inicial inválido. Use 1:30, -0:20 ou minutos.');
@@ -203,6 +204,13 @@
       if (novo) { abaFuncionarios(); formFuncionario(S.funcs.find((x) => x.id === r.id)); } else abaFuncionarios();
     };
     if (!novo) {
+      $('r-cadastrar').onclick = () => cadastrarRosto(f);
+      if ($('r-apagar')) $('r-apagar').onclick = async () => {
+        if (!confirm('Apagar o cadastro do rosto de ' + f.nome + '? Ele passa a marcar só pelo PIN.')) return;
+        const r = await chamar('admin_apagar_rosto', { funcionario_id: f.id });
+        if (!r.ok) return toast(msgErro(r.erro));
+        await carregarFuncs(); toast('Cadastro do rosto apagado.'); abaFuncionarios();
+      };
       $('j-salvar').onclick = async () => {
         const dsel = [...document.querySelectorAll('.j-dia:checked')].map((c) => Number(c.value));
         const r = await chamar('admin_salvar_jornada', { funcionario_id: f.id, vigencia_inicio: val('j-vig'), dias_trabalho: dsel,
@@ -212,6 +220,77 @@
       };
     }
   }
+  function formRostoHtml(f) {
+    return '<hr style="border:none;border-top:.5px solid var(--line);margin:16px 0"><h3>Rosto (reconhecimento facial)</h3>' +
+      '<p class="muted" style="margin-bottom:8px">' + (f.rosto_amostras
+        ? 'Cadastrado em ' + esc(dataHora(f.rosto_em)) + ' (' + esc(f.rosto_amostras) + ' posições).'
+        : 'Sem cadastro: marca pelo PIN.') +
+      ' Faça o cadastro <b>no próprio tablet</b> (mesma câmera e luz do dia a dia).</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="r-cadastrar"><i class="ti ti-face-id"></i> ' + (f.rosto_amostras ? 'Refazer cadastro' : 'Cadastrar rosto') + '</button>' +
+      (f.rosto_amostras ? '<button class="btn bad" id="r-apagar">Apagar cadastro</button>' : '') + '</div><div id="r-area"></div>';
+  }
+
+  // Cadastro do rosto: 5 posições (frente, dois lados, para cima e para baixo), cada uma só com rosto
+  // único, perto, com prova de vida e parado por 2 análises. Os lados não dependem de esquerda/direita
+  // da imagem: basta que o segundo seja para o lado oposto ao primeiro.
+  const POSES = [
+    { id: 'frente', txt: 'Olhe de frente para a câmera', ok: (r) => Math.abs(r.yaw) < 0.15 && Math.abs(r.pitch) < 0.15 },
+    { id: 'lado_a', txt: 'Vire o rosto um pouco para um lado', ok: (r) => Math.abs(r.yaw) > 0.2 },
+    { id: 'lado_b', txt: 'Agora um pouco para o outro lado', ok: (r, am) => Math.abs(r.yaw) > 0.2 && Math.sign(r.yaw) !== Math.sign(am.lado_a.yaw) },
+    { id: 'vertical_a', txt: 'Levante um pouco o queixo', ok: (r) => Math.abs(r.pitch) > 0.15 },
+    { id: 'vertical_b', txt: 'Agora abaixe um pouco o queixo', ok: (r, am) => Math.abs(r.pitch) > 0.15 && Math.sign(r.pitch) !== Math.sign(am.vertical_a.pitch) }
+  ];
+  const CADASTRO_INTERVALO_MS = Number((window.PONTO_CONFIG || {}).totemIntervaloMs) || 250;
+
+  async function cadastrarRosto(f) {
+    const area = $('r-area');
+    let ativo = true, laco = null, estavel = 0;
+    const amostras = {};
+    area.innerHTML = '<div class="cad-rosto"><div class="cad-cam" id="cad-cam"></div><div>' +
+      '<div class="cad-passos">' + POSES.map((p, i) => '<span class="cad-passo" data-i="' + i + '">' + (i + 1) + '</span>').join('') + '</div>' +
+      '<div class="cad-txt" id="cad-txt">Ligando a câmera…</div><div class="muted" id="cad-dica"></div>' +
+      '<div style="margin-top:10px"><button class="btn" id="cad-x">Cancelar</button></div></div></div>';
+    const txt = (t, dica) => { $('cad-txt').textContent = t; $('cad-dica').textContent = dica || ''; };
+    const fim = () => { ativo = false; clearTimeout(laco); window.PontoFoto.desligar(); };
+    $('cad-x').onclick = () => { fim(); area.innerHTML = ''; };
+    if (!(await window.PontoFoto.ligar($('cad-cam')))) { fim(); return txt('Câmera indisponível.', 'Libere a câmera no navegador e tente de novo.'); }
+    txt('Carregando o reconhecimento…');
+    try { await window.PontoRosto.iniciar(); } catch (e) { fim(); return txt('Reconhecimento indisponível neste aparelho.'); }
+    let i = 0;
+    const marcar = () => area.querySelectorAll('.cad-passo').forEach((el, k) => { el.className = 'cad-passo' + (k < i ? ' feito' : k === i ? ' atual' : ''); });
+    marcar(); txt(POSES[0].txt);
+    const passo = async () => {
+      if (!ativo) return;
+      let a = null;
+      try { a = await window.PontoRosto.analisar(window.PontoFoto.video()); } catch (e) { a = null; }
+      if (!ativo) return;
+      const pose = POSES[i];
+      let dica = '';
+      if (!a || !a.rostos) dica = 'Nenhum rosto na câmera.';
+      else if (a.rostos > 1) dica = 'Só uma pessoa na frente da câmera.';
+      else if (a.rosto.largura < 0.15) dica = 'Chegue mais perto.';
+      else if ((a.rosto.antispoof || 0) < 0.5 || (a.rosto.liveness || 0) < 0.5) dica = 'Rosto não confirmado como real: melhore a luz e olhe para a câmera.';
+      else if (!a.rosto.descritor) dica = 'Não consegui ler o rosto.';
+      else if (!pose.ok(a.rosto, amostras)) dica = '';
+      else if (++estavel >= 2) {
+        amostras[pose.id] = a.rosto; estavel = 0; i++; marcar();
+        if (i === POSES.length) {
+          fim(); txt('Salvando…');
+          const r = await chamar('admin_salvar_rosto', { funcionario_id: f.id,
+            amostras: POSES.map((p) => ({ posicao: p.id, descritor: amostras[p.id].descritor })) });
+          if (!r.ok) return txt(msgErro(r.erro));
+          await carregarFuncs(); toast('Rosto de ' + f.nome + ' cadastrado.');
+          return formFuncionario(S.funcs.find((x) => x.id === f.id));
+        }
+        txt(POSES[i].txt);
+      }
+      if (dica) estavel = 0;
+      $('cad-dica').textContent = dica;
+      laco = setTimeout(passo, CADASTRO_INTERVALO_MS);
+    };
+    passo();
+  }
+
   function formatarSaldoInicial(m) { return m ? (m < 0 ? '-' : '') + Math.floor(Math.abs(m) / 60) + ':' + String(Math.abs(m) % 60).padStart(2, '0') : '0'; }
   function formJornadaHtml(f, dias, j) {
     return '<hr style="border:none;border-top:.5px solid var(--line);margin:16px 0"><h3>Jornada</h3>' +
@@ -431,9 +510,11 @@
         return '<span class="badge ' + s[0] + '">' + esc(s[1]) + '</span>';
       };
       el.innerHTML = '<div class="card"><h2>Marcações e fotos — ' + esc(nome) + ' — ' + esc(titulo) + '</h2>' +
-        (r.marcacoes.length ? '<div class="scroll"><table class="t"><tr><th>Data/hora</th><th>Marcação</th><th class="n">NSR</th><th>Estação</th><th>Foto</th></tr>' +
+        (r.marcacoes.length ? '<div class="scroll"><table class="t"><tr><th>Data/hora</th><th>Marcação</th><th class="n">NSR</th><th>Estação</th><th>Identificação</th><th>Foto</th></tr>' +
           r.marcacoes.map((m) => '<tr' + (m.desconsiderada ? ' class="folga"' : '') + '><td>' + esc(dataHora(m.marcado_em)) + '</td><td>' + esc(TIPOS[m.tipo]) +
-            (m.desconsiderada ? ' <span class="badge">desconsiderada</span>' : '') + '</td><td class="n">' + esc(m.nsr) + '</td><td>' + esc(m.estacao) + '</td><td>' + celFoto(m) + '</td></tr>').join('') + '</table></div>'
+            (m.desconsiderada ? ' <span class="badge">desconsiderada</span>' : '') + '</td><td class="n">' + esc(m.nsr) + '</td><td>' + esc(m.estacao) + '</td><td>' +
+            (m.origem === 'rosto' ? '<span class="badge ok">rosto</span>' : m.sem_rosto ? '<span class="badge warn">PIN sem rosto</span>' : m.origem === 'pin' ? 'PIN' : '–') +
+            '</td><td>' + celFoto(m) + '</td></tr>').join('') + '</table></div>'
           : '<p class="muted">Nenhuma marcação no mês.</p>') +
         '<p class="muted" style="margin-top:8px">Clique na foto para ampliar. Os links valem 5 minutos; gere o relatório de novo se expirarem.</p></div>';
       return;
@@ -547,12 +628,16 @@
       S.empresas.map((e) => '<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" class="es-emp" value="' + e.id + '"' + (ids.includes(e.id) ? ' checked' : '') + '> ' + esc(e.nome) + '</label>').join('') + '</div>' +
       '<div class="row"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-imp"' + (!s || s.imprime ? ' checked' : '') + '> Imprime o comprovante (impressora térmica)</label>' +
       '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-foto"' + (s && s.tira_foto ? ' checked' : '') + '> Tira foto de prova (câmera frontal)</label>' +
+      '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-rosto"' + (s && s.reconhece_rosto ? ' checked' : '') + '> Reconhece rosto (modo totem)</label>' +
       '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-res"' + (s && s.reserva ? ' checked' : '') + '> Estação reserva (contingência)</label></div>' +
       '<div style="display:flex;gap:8px"><button class="btn pri" id="es-ok">' + (s ? 'Salvar' : 'Gerar código de ativação') + '</button><button class="btn" id="es-x">Cancelar</button></div></div>';
     $('es-x').onclick = () => { $('form-es').innerHTML = ''; };
+    // reconhecer rosto usa a câmera: liga a foto junto
+    const sincronizar = () => { if ($('es-rosto').checked) $('es-foto').checked = true; $('es-foto').disabled = $('es-rosto').checked; };
+    $('es-rosto').onchange = sincronizar; sincronizar();
     $('es-ok').onclick = async () => {
       const args = { nome: val('es-nome'), empresa_ids: [...document.querySelectorAll('.es-emp:checked')].map((c) => Number(c.value)),
-        imprime: $('es-imp').checked, tira_foto: $('es-foto').checked, reserva: $('es-res').checked };
+        imprime: $('es-imp').checked, tira_foto: $('es-foto').checked || $('es-rosto').checked, reconhece_rosto: $('es-rosto').checked, reserva: $('es-res').checked };
       if (!args.empresa_ids.length) return formEstacao(s, 'Marque pelo menos uma empresa.');
       const r = s ? await chamar('admin_salvar_estacao', Object.assign({ id: s.id }, args)) : await chamar('admin_criar_estacao', args);
       if (!r.ok) return formEstacao(s, msgErro(r.erro));
@@ -573,6 +658,25 @@
         (pct >= 80 ? '<span class="badge bad">acima de 80%</span>' : '<span class="badge ok">ok</span>'));
   }
 
+  // Calibração da primeira semana: similaridade de cada tentativa contra o limiar atual.
+  async function mostrarTentativas() {
+    const r = await chamar('admin_reconhecimentos', { limite: 40 });
+    const el = $('tentativas');
+    if (!el) return;
+    if (!r.ok) { el.innerHTML = msg(msgErro(r.erro)); return; }
+    const RES = { reconhecido: ['ok', 'reconhecido'], nao_reconhecido: ['bad', 'não reconhecido'], prova_de_vida: ['warn', 'prova de vida'],
+      sem_cadastro: ['', 'sem cadastro'], cancelado: ['', 'cancelado ("não sou eu")'] };
+    const n = (x) => x == null ? '–' : Number(x).toFixed(2);
+    el.innerHTML = '<p class="muted" style="margin-bottom:8px">Limiar atual: <b>' + esc(n(r.limiar)) + '</b> · margem mínima para a 2ª pessoa: <b>' + esc(n(r.margem)) +
+      '</b>. Use esta lista na primeira semana para calibrar (me passe os números).</p>' +
+      (r.tentativas.length ? '<div class="scroll"><table class="t"><tr><th>Quando</th><th>Estação</th><th>Resultado</th><th>Pessoa mais parecida</th><th class="n">Similaridade</th><th class="n">Margem</th><th class="n">Antispoof</th><th class="n">Vida</th></tr>' +
+        r.tentativas.map((t) => { const x = RES[t.resultado] || ['', t.resultado];
+          return '<tr><td>' + esc(dataHora(t.em)) + '</td><td>' + esc(t.estacao) + '</td><td><span class="badge ' + x[0] + '">' + esc(x[1]) + '</span>' + (t.marcou ? ' <span class="muted">marcou</span>' : '') +
+            '</td><td>' + esc(t.funcionario || '–') + '</td><td class="n">' + esc(n(t.similaridade)) + '</td><td class="n">' + esc(n(t.margem)) +
+            '</td><td class="n">' + esc(n(t.antispoof)) + '</td><td class="n">' + esc(n(t.liveness)) + '</td></tr>'; }).join('') + '</table></div>'
+        : '<p class="muted">Nenhuma tentativa ainda.</p>');
+  }
+
   async function abaConfig(novoToken) {
     let estacoes = [];
     if (S.empresas.length) { const r = await chamar('admin_estacoes'); estacoes = r.ok ? r.estacoes : []; }
@@ -590,13 +694,15 @@
           '<br><br>No tablet ou computador, abra <b>' + esc(site) + '</b> e cole esse código. <button class="btn sm" id="copiar">Copiar código</button></div>' : '') +
         (estacoes.length ? '<div class="scroll"><table class="t"><tr><th>Nome</th><th>Empresas</th><th>Uso</th><th>Saúde</th><th>Situação</th><th></th></tr>' +
           estacoes.map((s) => '<tr><td>' + esc(s.nome) + '</td><td>' + esc((s.empresas || []).join(', ')) + '</td><td>' +
-            (s.reserva ? 'Reserva' : 'Principal') + (s.imprime ? ' · imprime' : '') + (s.tira_foto ? ' · foto' : '') + '</td><td>' + saudeEstacao(s) + '</td><td>' +
+            (s.reserva ? 'Reserva' : 'Principal') + (s.imprime ? ' · imprime' : '') + (s.reconhece_rosto ? ' · rosto' : s.tira_foto ? ' · foto' : '') + '</td><td>' + saudeEstacao(s) + '</td><td>' +
             (s.ativa ? '<span class="badge ok">ativa</span>' : '<span class="badge">desativada</span>') + '</td><td class="n">' +
             (s.ativa ? '<button class="btn sm" data-edes="' + s.id + '">Editar</button> <button class="btn sm bad" data-des="' + s.id + '">Desativar</button>' : '') + '</td></tr>').join('') + '</table></div>'
           : '<p class="muted">Nenhuma estação.</p>') +
         '<div id="form-es"></div><div style="margin-top:10px"><button class="btn sm pri" id="es-nova">+ Nova estação</button></div></div>' +
 
         '<div class="card"><h2>Espaço das fotos</h2><div id="espaco" class="muted">Calculando…</div></div>' +
+
+        (estacoes.some((s) => s.reconhece_rosto) ? '<div class="card"><h2>Reconhecimento facial: últimas tentativas</h2><div id="tentativas" class="muted">Carregando…</div></div>' : '') +
 
         '<div class="card"><h2>Integridade dos registros</h2><p class="muted" style="margin-bottom:8px">Confere a numeração (NSR) e o encadeamento de hash de todas as marcações da empresa.</p>' +
         '<button class="btn" id="verif">Verificar agora</button> <span id="verif-res"></span></div>' : '');
@@ -622,6 +728,7 @@
         await chamar('admin_desativar_estacao', { id: Number(b.dataset.des) }); abaConfig();
       });
       mostrarEspaco();
+      if ($('tentativas')) mostrarTentativas();
       $('verif').onclick = async () => {
         const r = await chamar('admin_verificar_cadeia', { empresa_id: S.empresa });
         $('verif-res').innerHTML = !r.ok ? '<span class="badge bad">erro</span>'
