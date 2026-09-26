@@ -92,12 +92,9 @@ body.estacao{display:flex;flex-direction:column}
 .emp-tabs{display:flex;gap:8px;margin-bottom:16px}
 .emp-tab{flex:1;padding:14px 10px;font-size:17px;font-weight:600;border-radius:12px;border:.5px solid var(--line);background:var(--bg);color:var(--mut);cursor:pointer}
 .emp-tab.ativa{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-/* câmera da foto de prova */
-.cam{position:relative;max-width:420px;margin:0 auto;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3}
-.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
-.cam-oval{position:absolute;left:50%;top:50%;width:52%;height:78%;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
-.cam-msg{position:absolute;left:0;right:0;top:10px;text-align:center;color:#fff;font-size:17px;font-weight:600;text-shadow:0 1px 3px #000}
-.cam-cont{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#fff;font-size:48px;font-weight:700;text-shadow:0 2px 6px #000}
+/* câmera da foto de prova: sempre ligada, abaixo do relógio (a pessoa já está de frente) */
+.cam-vivo{width:176px;aspect-ratio:4/3;margin:10px auto 0;border-radius:12px;overflow:hidden;background:#000;border:.5px solid var(--line)}
+.cam-vivo video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
 .foto-mini{width:56px;height:56px;border-radius:8px;object-fit:cover;display:block;border:.5px solid var(--line)}
 /* tela de toque (tablet): alvos maiores */
 @media (pointer:coarse){
@@ -107,6 +104,7 @@ body.estacao{display:flex;flex-direction:column}
   .keypad button{padding:22px 0;font-size:30px}
   .keypad .acao{font-size:16px}
   .emp-tab{padding:18px 10px;font-size:19px}
+  .cam-vivo{width:220px}
 }
 .ultimas{margin-top:1rem;font-size:13px}
 .ultimas li{list-style:none;padding:5px 0;border-bottom:.5px solid var(--line);display:flex;justify-content:space-between;gap:8px}

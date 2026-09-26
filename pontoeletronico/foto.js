@@ -1,33 +1,76 @@
-// Foto como prova (especificação 11.4): captura na câmera frontal, SHA-256 e envio.
-// Sem câmera (ou sem permissão), capturar() devolve null e a marcação segue sem foto.
+// Foto como prova (especificação 11.4): câmera frontal sempre ligada na tela da estação;
+// a foto é o quadro do instante em que a pessoa toca em "Registrar". Também calcula o
+// SHA-256 e envia o arquivo. Sem câmera, capturarAgora() devolve null e a marcação segue sem foto.
 (function () {
-  const TAM = 240;          // lado da foto, em px
-  const ESPERA_MS = 5000;   // tempo máximo para a câmera abrir
+  const TAM = 240;             // lado da foto, em px
+  const ESPERA_MS = 5000;      // tempo máximo para a câmera abrir
+  const RELIGAR_MS = 10000;    // nova tentativa depois de uma falha ou queda da câmera
+
+  let stream = null, video = null, alvo = null, religar = null;
 
   const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
   const comPrazo = (p, ms) => Promise.race([p, esperar(ms).then(() => { throw new Error('prazo'); })]);
   const paraBlob = (canvas, tipo, q) => new Promise((r) => { try { canvas.toBlob(r, tipo, q); } catch (e) { r(null); } });
 
-  // Mostra a câmera dentro de "container" com moldura oval e contagem; devolve o Blob ou null.
-  async function capturar(container, segundos) {
+  function ativa() {
+    return !!(stream && video && video.videoWidth && stream.getVideoTracks().some((t) => t.readyState === 'live'));
+  }
+  function parar() {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null; video = null;
+  }
+  function agendarReligar() {
+    if (religar || !alvo) return;
+    religar = setTimeout(() => { religar = null; ligar(); }, RELIGAR_MS);
+  }
+
+  // Liga a câmera e mostra a imagem ao vivo em "container" (fica ligada até desligar()).
+  async function ligar(container) {
+    if (container) alvo = container;
+    if (!alvo) return false;
+    if (ativa()) return true;
+    parar();
     const md = navigator.mediaDevices;
-    if (!md || !md.getUserMedia) { PontoFoto.cameraOk = false; return null; }
-    let stream = null;
+    if (!md || !md.getUserMedia) { PontoFoto.cameraOk = false; alvo.hidden = true; return false; }
     try {
       stream = await comPrazo(md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }), ESPERA_MS);
-      container.innerHTML = '<div class="cam"><video playsinline muted autoplay></video><div class="cam-oval"></div>' +
-        '<div class="cam-msg">Olhe para a câmera</div><div class="cam-cont"></div></div>';
-      const video = container.querySelector('video');
+      alvo.innerHTML = '<video playsinline muted autoplay></video>';
+      video = alvo.querySelector('video');
       video.srcObject = stream;
       try { await video.play(); } catch (e) { /* autoplay já cuida */ }
       for (let t = 0; !video.videoWidth && t < 30; t++) await esperar(100);
       if (!video.videoWidth) throw new Error('sem imagem');
+      // o Android pode derrubar a câmera (outro app, economia de energia): religa sozinho
+      stream.getVideoTracks().forEach((t) => t.addEventListener('ended', agendarReligar));
+      alvo.hidden = false;
+      PontoFoto.cameraOk = true;
+      return true;
+    } catch (e) {
+      parar();
+      alvo.hidden = true;
+      PontoFoto.cameraOk = false;
+      agendarReligar();
+      return false;
+    }
+  }
 
-      const cont = container.querySelector('.cam-cont');
-      for (let s = segundos || 3; s > 0; s--) { cont.textContent = s; await esperar(1000); }
-      cont.textContent = '';
+  function desligar() {
+    clearTimeout(religar); religar = null;
+    parar();
+    if (alvo) { alvo.hidden = true; alvo.innerHTML = ''; }
+    alvo = null;
+    PontoFoto.cameraOk = null;
+  }
 
-      // recorte quadrado no centro (onde fica a moldura), reduzido para 240 px
+  // volta de tela apagada / aba em segundo plano, ou câmera travada sem aviso
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && alvo && !ativa()) ligar(); });
+  setInterval(() => { if (alvo && !ativa() && !religar) ligar(); }, 60000);
+
+  // Quadro atual da câmera: recorte quadrado no centro, reduzido para 240 px, WebP (ou JPEG).
+  async function capturarAgora() {
+    if (!ativa()) await ligar();
+    if (!ativa()) return null;
+    try {
       const vw = video.videoWidth, vh = video.videoHeight, lado = Math.min(vw, vh) * 0.8;
       const canvas = document.createElement('canvas');
       canvas.width = TAM; canvas.height = TAM;
@@ -39,8 +82,6 @@
     } catch (e) {
       PontoFoto.cameraOk = false;
       return null;
-    } finally {
-      if (stream) stream.getTracks().forEach((t) => t.stop());
     }
   }
 
@@ -68,6 +109,6 @@
     return false;
   }
 
-  const PontoFoto = { capturar, hash, enviar, cameraOk: null };
+  const PontoFoto = { ligar, desligar, capturarAgora, hash, enviar, cameraOk: null };
   window.PontoFoto = PontoFoto;
 })();

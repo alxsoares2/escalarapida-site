@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Ponto — Marcação</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-<link rel="stylesheet" href="ponto.css?v=20260926b" />
+<link rel="stylesheet" href="ponto.css?v=20260926c" />
 </head>
 <body class="estacao">
 
@@ -19,14 +19,15 @@
   <div class="est-empresa" id="est-empresa"></div>
   <div class="est-relogio" id="relogio">--:--:--</div>
   <div class="est-data" id="data"></div>
+  <div class="cam-vivo" id="cam-vivo" hidden></div>
 </div>
 
 <main class="est-corpo" id="corpo"></main>
 <div id="cupom" class="cupom" aria-hidden="true" style="display:none"></div>
 
-<script src="config.js?v=20260926b"></script>
-<script src="api.js?v=20260926b"></script>
-<script src="foto.js?v=20260926b"></script>
+<script src="config.js?v=20260926c"></script>
+<script src="api.js?v=20260926c"></script>
+<script src="foto.js?v=20260926c"></script>
 <script>
 (function () {
   const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
@@ -134,7 +135,9 @@
     $('bloco-relogio').hidden = false;
     tick();
     irParaLista();
-    sinal();
+    // Estação com foto: câmera sempre ligada; a foto é o quadro do instante do toque em "Registrar".
+    if (r.estacao.tira_foto && window.PontoFoto) window.PontoFoto.ligar($('cam-vivo')).then(sinal);
+    else { if (window.PontoFoto) window.PontoFoto.desligar(); $('cam-vivo').hidden = true; sinal(); }
   }
 
   // Sinal de vida para o quadro de saúde do painel (último contato e diferença do relógio).
@@ -243,13 +246,12 @@
 
   async function registrar(tipo) {
     document.querySelectorAll('.acao-btn').forEach((b) => b.disabled = true);
-    // Foto de prova: tirada agora, com contagem. Sem câmera, a marcação segue sem foto (alerta no painel).
+    // Foto de prova: o quadro da câmera neste instante. Sem câmera, a marcação segue sem foto (alerta no painel).
     let foto = null, fotoHash = null;
     if (info.estacao.tira_foto && window.PontoFoto) {
-      clearTimeout(ocioso);
-      foto = await window.PontoFoto.capturar(corpo, 3);
+      foto = await window.PontoFoto.capturarAgora();
       if (foto) { try { fotoHash = await window.PontoFoto.hash(foto); } catch (e) { foto = null; } }
-      if (window.PontoFoto.cameraOk === false) sinal();
+      if (!foto) sinal();
     }
     const r = await rpc('registrar', { token, funcionario_id: sel.id, pin, tipo, foto_hash: fotoHash });
     if (!r.ok) {

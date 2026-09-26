@@ -402,13 +402,17 @@ test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
   });
 });
 
-// Câmera simulada: "capturar" desenha um aviso na tela e devolve um arquivo fixo.
-const CAMERA_OK = `window.PontoFoto = { cameraOk: null, enviados: [],
-  capturar: async (el) => { el.innerHTML = '<div class="cam">câmera</div>'; window.PontoFoto.cameraOk = true; return { type: 'image/webp', fake: true }; },
+// Câmera simulada (o jsdom não tem câmera): "ligar" mostra a imagem ao vivo, "capturarAgora" devolve um arquivo fixo.
+const CAMERA_OK = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0,
+  ligar: async (el) => { el.innerHTML = '<video></video>'; el.hidden = false; window.PontoFoto.ligada = true; window.PontoFoto.cameraOk = true; return true; },
+  desligar: () => { window.PontoFoto.ligada = false; },
+  capturarAgora: async () => { window.PontoFoto.capturas++; return { type: 'image/webp', fake: true }; },
   hash: async () => '${'a'.repeat(64)}',
   enviar: async (blob, d) => { window.PontoFoto.enviados.push(d); return true; } };`;
-const CAMERA_QUEBRADA = `window.PontoFoto = { cameraOk: null, enviados: [],
-  capturar: async () => { window.PontoFoto.cameraOk = false; return null; },
+const CAMERA_QUEBRADA = `window.PontoFoto = { cameraOk: null, enviados: [], ligada: false, capturas: 0,
+  ligar: async (el) => { el.hidden = true; window.PontoFoto.cameraOk = false; return false; },
+  desligar: () => {},
+  capturarAgora: async () => { window.PontoFoto.capturas++; return null; },
   hash: async () => { throw new Error('não deveria calcular'); },
   enviar: async (b, d) => { window.PontoFoto.enviados.push(d); return true; } };`;
 
@@ -429,9 +433,20 @@ test('tablet com foto de prova', async (t) => {
     await p.esperar(() => p.$('.comprovante'), 'comprovante');
   }
 
-  await t.test('tira a foto, grava o hash na marcação e envia o arquivo com o id da marcação', async () => {
+  await t.test('câmera fica ligada na tela desde a abertura, antes de qualquer toque', async () => {
+    const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK });
+    await p.esperar(() => p.d.querySelectorAll('.nome-btn').length, 'nomes');
+    await p.esperar(() => p.w.PontoFoto.ligada, 'câmera ligada');
+    assert.equal(p.$('#cam-vivo').hidden, false);
+    assert.ok(p.$('#cam-vivo video'));
+    assert.equal(p.w.PontoFoto.capturas, 0);
+    p.fechar();
+  });
+
+  await t.test('tira a foto no toque, grava o hash na marcação e envia o arquivo com o id da marcação', async () => {
     const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK });
     await marcar(p, 0, '1234', 'entrada');
+    assert.equal(p.w.PontoFoto.capturas, 1);
     const m = (await db.query('select id::int, foto_hash, foto_exigida from ponto.marcacao')).rows[0];
     assert.deepEqual([m.foto_hash, m.foto_exigida], ['a'.repeat(64), true]);
     await p.esperar(() => p.w.PontoFoto.enviados.length === 1, 'envio da foto');
@@ -458,7 +473,9 @@ test('tablet com foto de prova', async (t) => {
     await fixarRelogio(db, '2026-09-14 13:00');
     const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK });
     await marcar(p, 0, '1234', 'saida_intervalo');
-    assert.equal(p.w.PontoFoto.cameraOk, null, 'capturar não foi chamado');
+    assert.equal(p.w.PontoFoto.ligada, false, 'câmera não foi ligada');
+    assert.equal(p.w.PontoFoto.capturas, 0);
+    assert.equal(p.$('#cam-vivo').hidden, true);
     const m = (await db.query(`select foto_hash, foto_exigida from ponto.marcacao where tipo = 'saida_intervalo'`)).rows[0];
     assert.deepEqual(m, { foto_hash: null, foto_exigida: false });
     p.fechar();

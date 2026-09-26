@@ -121,7 +121,7 @@ Celular do funcionário, geolocalização, integração com o gerador de escala,
 - **Banco:** migrations 0001–0008 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
 - **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026**, com a chave `anon` configurada e a conta do gestor criada. Impressão automática (Elgin i9), só o gestor desvincula e espelho novo também publicados (commits `173bb45` e `25e5a32`; arquivos no ar iguais ao repositório em 26/09/2026).
 - **Uso real:** ainda não. Em 26/09/2026 o banco tinha 1 empresa, 1 funcionário, 1 estação e 3 marcações, todas de 21/09 (testes da instalação).
-- **Testes:** 140 automáticos passando (apuração, segurança, estações, fotos e Edge Function, telas).
+- **Testes:** 141 automáticos passando (apuração, segurança, estações, fotos e Edge Function, telas).
 - **Versão 2, fase 2 (26/09/2026), no ar:** migration 0009 (`foto_hash` na cadeia, `foto_exigida`, tabela `foto`, `tira_foto`/`camera_ok` por estação, compartimento privado `ponto-fotos`), Edge Function `ponto-foto` (`dev/supabase/functions/`), câmera na estação (`foto.js`), relatório "Marcações e fotos" e espaço usado no painel. A hash sem foto é idêntica à da versão 1 (marcações antigas continuam conferindo). 0009 aplicada (pelo SQL Editor, conferida idêntica ao arquivo e anotada em `ponto.migracoes`), Edge Function publicada com `--no-verify-jwt` (a função se autentica sozinha), tela publicada. Falta o teste com a câmera real do tablet.
 - **Versão 2, fase 1 (26/09/2026), no ar:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Tela publicada no mesmo dia (commit `5e6feae`).
 - **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
@@ -164,8 +164,10 @@ Celular do funcionário, geolocalização, integração com o gerador de escala,
 
 ### 11.4 Foto como prova
 
-1. Depois do PIN, a câmera frontal abre com uma **moldura oval** e uma contagem de 3 s; a foto sai sozinha (o funcionário não escolhe o enquadramento).
-2. Recorte do centro da moldura (sem detecção de rosto), **240 px, WebP, ~10 KB**.
+1. **Câmera sempre ligada** (decidido em 26/09/2026, no lugar da moldura com contagem): a imagem da câmera frontal fica o tempo todo na tela da estação, abaixo do relógio. A foto é o **quadro do instante do toque em "Registrar"**, sem contagem nem espera; a pessoa já está de frente para o tablet. Nada é gravado continuamente: só esse quadro é guardado.
+   - Se o Android derrubar a câmera (tela apagada, outro app, economia de energia), a página religa sozinha (na volta da tela, 10 s depois de uma falha e numa checagem a cada minuto).
+   - Desligar a câmera fora do horário de funcionamento fica para quando o horário por estação existir (fase 3).
+2. Recorte quadrado do centro da imagem (sem detecção de rosto), **240 px, WebP, ~10 KB**.
 3. O **SHA-256 da foto entra no cálculo do hash encadeado** da marcação (coluna nova `foto_hash` em `marcacao`). Trocar a foto depois é detectável.
 4. **Câmera com defeito ou recusada não impede a marcação** (seção 3: a marcação nunca é bloqueada); a marcação fica com o alerta `sem_foto`.
 5. **Onde fica:** compartimento **privado** `ponto-fotos` no Supabase Storage, caminho `empresa/AAAA-MM/nsr.webp`. Nunca público (os compartimentos que já existem no projeto são públicos; este não pode ser).
@@ -182,12 +184,12 @@ Decidido em 26/09/2026. Construído **em cima da foto de prova** (11.4), que con
 **Onde roda:** o modelo roda **no tablet**, no navegador (biblioteca de código aberto `@vladmandic/human`, versão fixa, carregada do jsDelivr e guardada no aparelho; ~5 a 8 MB). Ele encontra o rosto, faz a prova de vida e gera o **descritor** (assinatura numérica do rosto). **A comparação é no servidor**, dentro do banco: o tablet envia só o descritor; os descritores cadastrados **nunca saem do servidor** (tablet roubado não leva o cadastro facial de ninguém). Sem serviço pago. Sem AWS.
 
 **Fluxo no tablet (estação com `reconhece_rosto`):**
-1. Tela de espera: relógio + **"Toque para bater o ponto"**. A câmera só liga depois do toque.
+1. Tela de espera: relógio + **câmera sempre ligada** (11.4). Um detector leve de rosto roda o tempo todo em baixa frequência; quando um rosto fica **parado de frente por ~1 s**, o reconhecimento começa sozinho, **sem toque**. Quem preferir continua podendo tocar no próprio nome (vai direto para o PIN).
 2. O tablet pede ao servidor o início do reconhecimento (`api_iniciar_reconhecimento`), que devolve um identificador de uso único (vale **60 s**) e o **desafio de prova de vida** sorteado pelo servidor: `nenhum`, `piscar` ou `virar_rosto`.
-3. "Olhe para a câmera" (+ o desafio, se houver). Até **5 s** para achar um rosto.
+3. Desafio de prova de vida, se sorteado ("pisque" / "vire o rosto"). Até **5 s** para cumprir.
 4. O tablet envia o descritor e se o desafio foi cumprido (`api_reconhecer`). O servidor compara com os descritores dos funcionários **ativos das empresas que a estação atende** (1 para N) e responde com a pessoa reconhecida ou "não reconhecido".
 5. **Reconhecido:** tela "Olá, **Ana** (Empresa X) — Registrar ENTRADA?" com os botões das marcações válidas, e **"Não sou eu"**. O toque confirma; a foto de prova é tirada nesse momento.
-6. **Não reconhecido** (ou "Não sou eu", ou sem rosto em 5 s, ou câmera com defeito): cai no fluxo atual, **abas por empresa → nome → PIN**. A marcação por PIN recebe o alerta `sem_rosto` e aparece destacada para o gestor revisar, com a foto.
+6. **Não reconhecido** (ou "Não sou eu", ou desafio não cumprido em 5 s, ou câmera com defeito): cai no fluxo atual, **abas por empresa → nome → PIN**. A marcação por PIN recebe o alerta `sem_rosto` e aparece destacada para o gestor revisar, com a foto.
 
 **Regra de reconhecimento:**
 - Reconhece quando a similaridade com o melhor candidato é **≥ limiar** e a diferença para o segundo melhor é **≥ margem** (evita confundir duas pessoas parecidas). Limiar e margem ficam em `ponto.config`; valores iniciais conservadores, **calibrados no tablet real** (luz e câmera do local) antes de ligar para todos.
