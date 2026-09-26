@@ -122,7 +122,7 @@ Celular do funcionário, geolocalização, biometria/reconhecimento facial, inte
 - **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026**, com a chave `anon` configurada e a conta do gestor criada. Impressão automática (Elgin i9), só o gestor desvincula e espelho novo também publicados (commits `173bb45` e `25e5a32`; arquivos no ar iguais ao repositório em 26/09/2026).
 - **Uso real:** ainda não. Em 26/09/2026 o banco tinha 1 empresa, 1 funcionário, 1 estação e 3 marcações, todas de 21/09 (testes da instalação).
 - **Testes:** 112 automáticos passando (apuração, segurança, estações, telas).
-- **Versão 2, fase 1 (26/09/2026), só local:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Falta publicar a tela nova.
+- **Versão 2, fase 1 (26/09/2026), no ar:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Tela publicada no mesmo dia (commit `5e6feae`).
 - **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
 
 ## 10. Pontos a confirmar com o dono

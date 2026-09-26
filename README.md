@@ -154,7 +154,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 ## Pendências / próximos passos
 
 - [ ] **Ponto, versão 2** (tablet, foto como prova, comprovante pelo WhatsApp do Marcus, marcação sem internet, backup no Drive, saúde das estações). Especificação aprovada em 26/09/2026: `docs/ponto/ESPECIFICACAO.md`, seção 11. Fases:
-  - [x] Fase 1 (código pronto e testado, **só local**): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 **aplicada** no banco real em 26/09/2026. **Falta:** publicar (`git push`).
+  - [x] Fase 1 (no ar desde 26/09/2026): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 aplicada e tela publicada em 26/09/2026 (commit `5e6feae`).
   - [ ] Fase 2: foto (Edge Function, compartimento privado, hash na cadeia). Antes: texto do aviso de foto aos funcionários.
   - [ ] Fase 3: WhatsApp pelo Marcus + aviso de estação fora do ar (mexe no `marcus-assistente`).
   - [ ] Fase 4: backup (botão + Drive do RH + `manifest.txt`). Antes: confirmar backup sem PDF e o dono da pasta no Drive.
@@ -171,4 +171,4 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
 | 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
-| 26/09/2026 | Ponto v2 especificado e aprovado (seção 11 da especificação). Fase 1 implementada localmente: estação com várias empresas (abas no tablet), impressão por estação, sinal de vida e quadro de saúde; migration 0008; 112 testes |
+| 26/09/2026 | Ponto v2 especificado e aprovado (seção 11 da especificação). Fase 1 publicada: estação com várias empresas (abas no tablet), impressão por estação, sinal de vida e quadro de saúde; migration 0008; 112 testes |
