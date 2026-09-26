@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Ponto — Marcação</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-<link rel="stylesheet" href="ponto.css?v=20260926a" />
+<link rel="stylesheet" href="ponto.css?v=20260926b" />
 </head>
 <body class="estacao">
 
@@ -24,8 +24,9 @@
 <main class="est-corpo" id="corpo"></main>
 <div id="cupom" class="cupom" aria-hidden="true" style="display:none"></div>
 
-<script src="config.js?v=20260926a"></script>
-<script src="api.js?v=20260926a"></script>
+<script src="config.js?v=20260926b"></script>
+<script src="api.js?v=20260926b"></script>
+<script src="foto.js?v=20260926b"></script>
 <script>
 (function () {
   const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
@@ -139,7 +140,10 @@
   // Sinal de vida para o quadro de saúde do painel (último contato e diferença do relógio).
   async function sinal() {
     if (!token) return;
-    const r = await rpc('estacao_sinal', { token, relogio: new Date().toISOString() });
+    const args = { token, relogio: new Date().toISOString() };
+    // câmera: só informa depois de tentar usar (null = ainda não sabe)
+    if (info && info.estacao.tira_foto && window.PontoFoto && window.PontoFoto.cameraOk !== null) args.camera = window.PontoFoto.cameraOk;
+    const r = await rpc('estacao_sinal', args);
     if (r.ok && r.agora) offset = new Date(r.agora).getTime() - Date.now();
   }
   setInterval(sinal, 5 * 60 * 1000);
@@ -239,13 +243,23 @@
 
   async function registrar(tipo) {
     document.querySelectorAll('.acao-btn').forEach((b) => b.disabled = true);
-    const r = await rpc('registrar', { token, funcionario_id: sel.id, pin, tipo });
+    // Foto de prova: tirada agora, com contagem. Sem câmera, a marcação segue sem foto (alerta no painel).
+    let foto = null, fotoHash = null;
+    if (info.estacao.tira_foto && window.PontoFoto) {
+      clearTimeout(ocioso);
+      foto = await window.PontoFoto.capturar(corpo, 3);
+      if (foto) { try { fotoHash = await window.PontoFoto.hash(foto); } catch (e) { foto = null; } }
+      if (window.PontoFoto.cameraOk === false) sinal();
+    }
+    const r = await rpc('registrar', { token, funcionario_id: sel.id, pin, tipo, foto_hash: fotoHash });
     if (!r.ok) {
       if (['pin_invalido', 'bloqueado'].includes(r.erro)) return irParaLista({ texto: msgErro(r.erro), tipo: 'erro' });
       const nova = await rpc('estado', { token, funcionario_id: sel.id, pin });
       if (nova.ok) estado = nova;
       return telaAcao(msgErro(r.erro));
     }
+    // o arquivo sobe em segundo plano; a marcação (com o hash da foto) já está gravada
+    if (foto && r.marcacao_id) window.PontoFoto.enviar(foto, { token, marcacaoId: r.marcacao_id });
     telaComprovante(r.comprovante);
   }
 

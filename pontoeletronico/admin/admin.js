@@ -390,7 +390,7 @@
     $('aba').innerHTML =
       '<div class="card no-print"><h2>Relatório</h2><div class="row">' +
       '<div class="field"><label for="r-tipo">Relatório</label><select id="r-tipo">' +
-      opts({ espelho: 'Espelho de ponto (mensal)', banco: 'Banco de horas', faltas: 'Lista de faltas (empresa)' }, estado.rel) + '</select></div>' +
+      opts({ espelho: 'Espelho de ponto (mensal)', marcacoes: 'Marcações e fotos', banco: 'Banco de horas', faltas: 'Lista de faltas (empresa)' }, estado.rel) + '</select></div>' +
       '<div class="field" id="r-f-box"><label for="r-f">Funcionário</label><select id="r-f">' + funcOpts(estado.func) + '</select></div>' +
       '<div class="field"><label for="r-mes">Mês</label><input type="month" id="r-mes" value="' + esc(estado.mes) + '"></div>' +
       '<button class="btn pri" id="r-ok">Gerar</button></div></div><div id="rel" class="print-area"></div>';
@@ -413,6 +413,29 @@
           r.funcionarios.map((f) => '<tr><td>' + esc(f.nome) + '</td><td class="n"><b>' + esc(f.total) + '</b></td><td>' + esc(f.datas.map(dataBR).join(', ')) + '</td></tr>').join('') + '</table>'
           : '<p class="muted">Nenhuma falta no período.</p>') +
         '<p class="muted" style="margin-top:8px">Falta de dia inteiro não altera o banco de horas. O desconto do dia (e do DSR) é feito na folha.</p></div>';
+      return;
+    }
+
+    if (e.rel === 'marcacoes') {
+      const r = await chamar('admin_marcacoes_fotos', { funcionario_id: e.func, ini, fim });
+      if (!r.ok) return el.innerHTML = msg(msgErro(r.erro));
+      const nome = (S.funcs.find((f) => f.id === e.func) || {}).nome || '';
+      const comFoto = r.marcacoes.filter((m) => m.foto === 'foto').map((m) => m.id);
+      const urls = await window.Ponto.fotos(S.sessao, comFoto);
+      const SIT = { sem_foto: ['bad', 'sem foto (câmera falhou)'], foto_nao_recebida: ['warn', 'foto não chegou'], apagada: ['', 'foto apagada (prazo)'], nenhuma: ['', 'estação sem câmera'] };
+      const celFoto = (m) => {
+        if (m.foto === 'foto') return urls[m.id]
+          ? '<a href="' + esc(urls[m.id]) + '" target="_blank" rel="noopener"><img class="foto-mini" src="' + esc(urls[m.id]) + '" alt="Foto da marcação ' + esc(m.nsr) + '"></a>'
+          : '<span class="badge">foto indisponível</span>';
+        const s = SIT[m.foto] || ['', m.foto];
+        return '<span class="badge ' + s[0] + '">' + esc(s[1]) + '</span>';
+      };
+      el.innerHTML = '<div class="card"><h2>Marcações e fotos — ' + esc(nome) + ' — ' + esc(titulo) + '</h2>' +
+        (r.marcacoes.length ? '<div class="scroll"><table class="t"><tr><th>Data/hora</th><th>Marcação</th><th class="n">NSR</th><th>Estação</th><th>Foto</th></tr>' +
+          r.marcacoes.map((m) => '<tr' + (m.desconsiderada ? ' class="folga"' : '') + '><td>' + esc(dataHora(m.marcado_em)) + '</td><td>' + esc(TIPOS[m.tipo]) +
+            (m.desconsiderada ? ' <span class="badge">desconsiderada</span>' : '') + '</td><td class="n">' + esc(m.nsr) + '</td><td>' + esc(m.estacao) + '</td><td>' + celFoto(m) + '</td></tr>').join('') + '</table></div>'
+          : '<p class="muted">Nenhuma marcação no mês.</p>') +
+        '<p class="muted" style="margin-top:8px">Clique na foto para ampliar. Os links valem 5 minutos; gere o relatório de novo se expirarem.</p></div>';
       return;
     }
 
@@ -508,6 +531,7 @@
     if (!s.ultimo_contato) return '<span class="badge">nunca conectou</span>';
     const partes = [s.online ? '<span class="badge ok">online</span>' : '<span class="badge bad">fora do ar</span>',
       '<span class="muted">último contato ' + esc(dataHora(s.ultimo_contato)) + '</span>'];
+    if (s.tira_foto && s.camera_ok === false) partes.push('<span class="badge bad">câmera com falha</span>');
     if (s.relogio_ok === false) {
       const m = Math.round(Math.abs(s.relogio_dif_ms) / 60000);
       partes.push('<span class="badge warn">relógio ' + m + ' min ' + (s.relogio_dif_ms > 0 ? 'adiantado' : 'atrasado') + '</span>');
@@ -522,17 +546,31 @@
       '<div class="row"><span class="muted">Empresas atendidas (uma aba para cada):</span>' +
       S.empresas.map((e) => '<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" class="es-emp" value="' + e.id + '"' + (ids.includes(e.id) ? ' checked' : '') + '> ' + esc(e.nome) + '</label>').join('') + '</div>' +
       '<div class="row"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-imp"' + (!s || s.imprime ? ' checked' : '') + '> Imprime o comprovante (impressora térmica)</label>' +
+      '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-foto"' + (s && s.tira_foto ? ' checked' : '') + '> Tira foto de prova (câmera frontal)</label>' +
       '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-res"' + (s && s.reserva ? ' checked' : '') + '> Estação reserva (contingência)</label></div>' +
       '<div style="display:flex;gap:8px"><button class="btn pri" id="es-ok">' + (s ? 'Salvar' : 'Gerar código de ativação') + '</button><button class="btn" id="es-x">Cancelar</button></div></div>';
     $('es-x').onclick = () => { $('form-es').innerHTML = ''; };
     $('es-ok').onclick = async () => {
       const args = { nome: val('es-nome'), empresa_ids: [...document.querySelectorAll('.es-emp:checked')].map((c) => Number(c.value)),
-        imprime: $('es-imp').checked, reserva: $('es-res').checked };
+        imprime: $('es-imp').checked, tira_foto: $('es-foto').checked, reserva: $('es-res').checked };
       if (!args.empresa_ids.length) return formEstacao(s, 'Marque pelo menos uma empresa.');
       const r = s ? await chamar('admin_salvar_estacao', Object.assign({ id: s.id }, args)) : await chamar('admin_criar_estacao', args);
       if (!r.ok) return formEstacao(s, msgErro(r.erro));
       if (s) { toast('Estação salva.'); abaConfig(); } else abaConfig(r.token);
     };
+  }
+
+  // Plano gratuito do Supabase: 1 GB de Storage para o projeto todo; avisa acima de 80%.
+  async function mostrarEspaco() {
+    const r = await chamar('admin_espaco');
+    const el = $('espaco');
+    if (!el) return;
+    if (!r.ok) { el.innerHTML = msg(msgErro(r.erro)); return; }
+    const mb = (b) => (b / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB';
+    const pct = r.storage_bytes == null ? null : Math.round(r.storage_bytes * 100 / r.limite_bytes);
+    el.innerHTML = 'Fotos do ponto: <b>' + esc(mb(r.fotos_bytes)) + '</b> (' + esc(r.fotos_qtd) + ' fotos)' +
+      (pct == null ? '' : ' · Storage do projeto: <b>' + esc(mb(r.storage_bytes)) + '</b> de 1 GB (' + pct + '%) ' +
+        (pct >= 80 ? '<span class="badge bad">acima de 80%</span>' : '<span class="badge ok">ok</span>'));
   }
 
   async function abaConfig(novoToken) {
@@ -552,11 +590,13 @@
           '<br><br>No tablet ou computador, abra <b>' + esc(site) + '</b> e cole esse código. <button class="btn sm" id="copiar">Copiar código</button></div>' : '') +
         (estacoes.length ? '<div class="scroll"><table class="t"><tr><th>Nome</th><th>Empresas</th><th>Uso</th><th>Saúde</th><th>Situação</th><th></th></tr>' +
           estacoes.map((s) => '<tr><td>' + esc(s.nome) + '</td><td>' + esc((s.empresas || []).join(', ')) + '</td><td>' +
-            (s.reserva ? 'Reserva' : 'Principal') + (s.imprime ? ' · imprime' : '') + '</td><td>' + saudeEstacao(s) + '</td><td>' +
+            (s.reserva ? 'Reserva' : 'Principal') + (s.imprime ? ' · imprime' : '') + (s.tira_foto ? ' · foto' : '') + '</td><td>' + saudeEstacao(s) + '</td><td>' +
             (s.ativa ? '<span class="badge ok">ativa</span>' : '<span class="badge">desativada</span>') + '</td><td class="n">' +
             (s.ativa ? '<button class="btn sm" data-edes="' + s.id + '">Editar</button> <button class="btn sm bad" data-des="' + s.id + '">Desativar</button>' : '') + '</td></tr>').join('') + '</table></div>'
           : '<p class="muted">Nenhuma estação.</p>') +
         '<div id="form-es"></div><div style="margin-top:10px"><button class="btn sm pri" id="es-nova">+ Nova estação</button></div></div>' +
+
+        '<div class="card"><h2>Espaço das fotos</h2><div id="espaco" class="muted">Calculando…</div></div>' +
 
         '<div class="card"><h2>Integridade dos registros</h2><p class="muted" style="margin-bottom:8px">Confere a numeração (NSR) e o encadeamento de hash de todas as marcações da empresa.</p>' +
         '<button class="btn" id="verif">Verificar agora</button> <span id="verif-res"></span></div>' : '');
@@ -581,6 +621,7 @@
         if (!confirm('Desativar esta estação? O computador deixa de poder marcar ponto.')) return;
         await chamar('admin_desativar_estacao', { id: Number(b.dataset.des) }); abaConfig();
       });
+      mostrarEspaco();
       $('verif').onclick = async () => {
         const r = await chamar('admin_verificar_cadeia', { empresa_id: S.empresa });
         $('verif-res').innerHTML = !r.ok ? '<span class="badge bad">erro</span>'

@@ -50,20 +50,23 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/index.html` | Tela do computador do balcão: escolhe o nome, digita o PIN, marca (entrada, saída p/ intervalo, volta, saída), comprovante, pedido de correção |
 | `pontoeletronico/admin/` | Painel do gestor: funcionários e jornadas, domingos de folga e exceções, correções, relatórios (espelho mensal/PDF, banco de horas, faltas), empresas e estações |
 | `pontoeletronico/api.js`, `config.js`, `ponto.css` | Cliente da API, configuração pública, estilo |
-| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0008 (todas aplicadas; 0008 = versão 2, fase 1, aplicada em 26/09/2026) |
-| `dev/tests/` | 112 testes: regras de apuração, segurança, estações e as telas (jsdom ligado a um Postgres em memória) |
+| `pontoeletronico/foto.js` | Câmera da foto de prova: captura (240 px, WebP), SHA-256 e envio pela Edge Function |
+| `dev/supabase/functions/ponto-foto/` | Edge Function das fotos: `handler.js` (lógica, testada no Node) + `index.ts` (liga ao banco e ao Storage). Fica em `dev/`, bloqueada no site |
+| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0009, todas aplicadas (0009 = fase 2, foto) |
+| `dev/tests/` | 140 testes: regras de apuração, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 112 testes, ~45 s, não toca no banco real
+npm test                                                                   # 140 testes, ~60 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
+npx supabase functions deploy ponto-foto --project-ref dhmlltvdyhavpoyazaph --no-verify-jwt --workdir .   # publica a Edge Function das fotos (precisa de `npx supabase login` uma vez)
 ```
 
-**Não aplicar migration pelo SQL Editor do Supabase:** o painel pode estar aberto no projeto errado (em 26/09/2026 a 0008 foi colada no projeto do DirectMenu e falhou com `schema "ponto" does not exist`), e o Editor não registra a migration em `ponto.migracoes`, então o script tentaria aplicá-la de novo. Sempre pelo `migrate.mjs`.
+**Não aplicar migration pelo SQL Editor do Supabase:** o painel pode estar aberto no projeto errado (em 26/09/2026 a 0008 foi colada no projeto do DirectMenu e falhou com `schema "ponto" does not exist`), e o Editor não registra a migration em `ponto.migracoes`, então o script tenta aplicá-la de novo e falha (aconteceu com a 0009 em 26/09/2026: aplicada pelo Editor, o script falhou com "column already exists"; conferido que o banco era idêntico ao arquivo e só então a 0009 foi anotada em `ponto.migracoes`). Sempre pelo `migrate.mjs`.
 
 `DATABASE_URL` vem do `.env` do `marcus-assistente` (mesmo banco). Nunca copiar essa URL para este repositório. A pasta `~/.credenciais` citada no CLAUDE.md raiz **não existe** neste computador.
 
@@ -155,7 +158,8 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 
 - [ ] **Ponto, versão 2** (tablet, foto como prova, comprovante pelo WhatsApp do Marcus, marcação sem internet, backup no Drive, saúde das estações). Especificação aprovada em 26/09/2026: `docs/ponto/ESPECIFICACAO.md`, seção 11. Fases:
   - [x] Fase 1 (no ar desde 26/09/2026): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 aplicada e tela publicada em 26/09/2026 (commit `5e6feae`).
-  - [ ] Fase 2: foto (Edge Function, compartimento privado, hash na cadeia). Antes: texto do aviso de foto aos funcionários.
+  - [x] Fase 2 (no ar desde 26/09/2026): foto como prova (câmera com contagem, 240 px WebP, hash na cadeia), Edge Function `ponto-foto`, compartimento privado `ponto-fotos`, relatório "Marcações e fotos", espaço usado, câmera no quadro de saúde. Migration 0009 aplicada, Edge Function publicada e tela publicada. Ainda não testada com câmera real: ligar "Tira foto de prova" na estação do tablet e conferir no relatório "Marcações e fotos". Expurgo das fotos vencidas fica na fase 4.
+  - [ ] Fase 2A: reconhecimento facial (rosto identifica, PIN como reserva, prova de vida sorteada). Calibrar no tablet real.
   - [ ] Fase 3: WhatsApp pelo Marcus + aviso de estação fora do ar (mexe no `marcus-assistente`).
   - [ ] Fase 4: backup (botão + Drive do RH + `manifest.txt`). Antes: confirmar backup sem PDF e o dono da pasta no Drive.
   - [ ] Fase 5: marcação sem internet (PIN cifrado com chave pública).
@@ -171,4 +175,5 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
 | 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
+| 26/09/2026 | Fase 2 do ponto v2 publicada (foto como prova, Edge Function `ponto-foto`, migration 0009); 140 testes. Reconhecimento facial especificado como fase 2A |
 | 26/09/2026 | Ponto v2 especificado e aprovado (seção 11 da especificação). Fase 1 publicada: estação com várias empresas (abas no tablet), impressão por estação, sinal de vida e quadro de saúde; migration 0008; 112 testes |

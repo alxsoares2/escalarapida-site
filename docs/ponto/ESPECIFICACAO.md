@@ -114,14 +114,15 @@ Relatórios:
 4. **Correções pendentes.**
 
 ## 8. Fora de escopo (por enquanto)
-Celular do funcionário, geolocalização, biometria/reconhecimento facial, integração com o gerador de escala, assinatura ICP-Brasil, AFD/AEJ oficiais, venda a terceiros, múltiplos administradores. (Foto como prova, tablet, WhatsApp, marcação sem internet e backup estão na versão 2, seção 11.)
+Celular do funcionário, geolocalização, integração com o gerador de escala, assinatura ICP-Brasil, AFD/AEJ oficiais, venda a terceiros, múltiplos administradores. (Tablet, foto, reconhecimento facial, WhatsApp, marcação sem internet e backup estão na versão 2, seção 11.)
 
 ## 9. Estado da implementação (conferido em 26/09/2026)
 
 - **Banco:** migrations 0001–0008 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
 - **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026**, com a chave `anon` configurada e a conta do gestor criada. Impressão automática (Elgin i9), só o gestor desvincula e espelho novo também publicados (commits `173bb45` e `25e5a32`; arquivos no ar iguais ao repositório em 26/09/2026).
 - **Uso real:** ainda não. Em 26/09/2026 o banco tinha 1 empresa, 1 funcionário, 1 estação e 3 marcações, todas de 21/09 (testes da instalação).
-- **Testes:** 112 automáticos passando (apuração, segurança, estações, telas).
+- **Testes:** 140 automáticos passando (apuração, segurança, estações, fotos e Edge Function, telas).
+- **Versão 2, fase 2 (26/09/2026), no ar:** migration 0009 (`foto_hash` na cadeia, `foto_exigida`, tabela `foto`, `tira_foto`/`camera_ok` por estação, compartimento privado `ponto-fotos`), Edge Function `ponto-foto` (`dev/supabase/functions/`), câmera na estação (`foto.js`), relatório "Marcações e fotos" e espaço usado no painel. A hash sem foto é idêntica à da versão 1 (marcações antigas continuam conferindo). 0009 aplicada (pelo SQL Editor, conferida idêntica ao arquivo e anotada em `ponto.migracoes`), Edge Function publicada com `--no-verify-jwt` (a função se autentica sozinha), tela publicada. Falta o teste com a câmera real do tablet.
 - **Versão 2, fase 1 (26/09/2026), no ar:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Tela publicada no mesmo dia (commit `5e6feae`).
 - **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
 
@@ -139,7 +140,7 @@ Celular do funcionário, geolocalização, biometria/reconhecimento facial, inte
 | Tema | Decisão |
 |---|---|
 | Aparelho | **Um tablet Android** fixo, com a página do ponto em modo quiosque (sem app de loja) |
-| Identificação | **PIN + foto como prova.** Sem reconhecimento facial (dado biométrico sensível na LGPD, exige prova de vida e custo) |
+| Identificação | **Reconhecimento facial** (decidido em 26/09/2026, revendo a decisão anterior de só foto): o rosto identifica a pessoa e o **PIN vira reserva** quando não reconhece. Prova de vida **às vezes** (sorteada). A foto de prova continua em toda marcação (11.4 e 11.4A) |
 | Empresas | O tablet atende **as 2 empresas**, com **abas por empresa** |
 | Impressão | O tablet **não imprime**. O computador da Elgin i9 continua como **estação reserva**, com impressão |
 | Comprovante | **WhatsApp pelo número do Marcus** (fila no banco, o Marcus envia) |
@@ -172,7 +173,45 @@ Celular do funcionário, geolocalização, biometria/reconhecimento facial, inte
 7. **Quem vê:** só o gestor, no painel (miniatura ao lado de cada marcação, no dia e nas correções). O funcionário não vê fotos de ninguém.
 8. **Prazo:** fotos guardadas por **2 anos** por padrão, configurável no painel **até 5 anos** (só se o contador/advogado justificar); depois são apagadas. Motivo: quem prova as marcações é o espelho assinado todo mês; a foto serve para dúvidas recentes, e guardar menos reduz a exposição na LGPD. A marcação fica para sempre (com o `foto_hash`, que prova que existiu foto).
 9. **Espaço:** ~1.040 fotos/mês × 10 KB ≈ 125 MB/ano ≈ 250 MB em 2 anos (620 MB no máximo de 5), dentro do 1 GB grátis. Em 26/09/2026 o Storage do projeto usava 12 MB e o banco 18 MB (de 500 MB). O painel mostra o **espaço usado** e avisa acima de 80%.
-10. **Aviso aos funcionários (LGPD):** antes de ligar a foto, cada funcionário recebe e assina um aviso dizendo que a foto é tirada a cada marcação, para que serve (prova de quem marcou), quem vê (só o gestor) e por quanto tempo fica. O texto do aviso fica pronto no painel para imprimir.
+10. **Aviso aos funcionários:** **dispensado pelo dono em 26/09/2026** (uso interno e próprio). Não há aviso impresso no painel. Informação de registro: o banco e o Storage ficam na região `us-east-1` (EUA), conferido em 26/09/2026.
+
+### 11.4A Reconhecimento facial
+
+Decidido em 26/09/2026. Construído **em cima da foto de prova** (11.4), que continua existindo em toda marcação.
+
+**Onde roda:** o modelo roda **no tablet**, no navegador (biblioteca de código aberto `@vladmandic/human`, versão fixa, carregada do jsDelivr e guardada no aparelho; ~5 a 8 MB). Ele encontra o rosto, faz a prova de vida e gera o **descritor** (assinatura numérica do rosto). **A comparação é no servidor**, dentro do banco: o tablet envia só o descritor; os descritores cadastrados **nunca saem do servidor** (tablet roubado não leva o cadastro facial de ninguém). Sem serviço pago. Sem AWS.
+
+**Fluxo no tablet (estação com `reconhece_rosto`):**
+1. Tela de espera: relógio + **"Toque para bater o ponto"**. A câmera só liga depois do toque.
+2. O tablet pede ao servidor o início do reconhecimento (`api_iniciar_reconhecimento`), que devolve um identificador de uso único (vale **60 s**) e o **desafio de prova de vida** sorteado pelo servidor: `nenhum`, `piscar` ou `virar_rosto`.
+3. "Olhe para a câmera" (+ o desafio, se houver). Até **5 s** para achar um rosto.
+4. O tablet envia o descritor e se o desafio foi cumprido (`api_reconhecer`). O servidor compara com os descritores dos funcionários **ativos das empresas que a estação atende** (1 para N) e responde com a pessoa reconhecida ou "não reconhecido".
+5. **Reconhecido:** tela "Olá, **Ana** (Empresa X) — Registrar ENTRADA?" com os botões das marcações válidas, e **"Não sou eu"**. O toque confirma; a foto de prova é tirada nesse momento.
+6. **Não reconhecido** (ou "Não sou eu", ou sem rosto em 5 s, ou câmera com defeito): cai no fluxo atual, **abas por empresa → nome → PIN**. A marcação por PIN recebe o alerta `sem_rosto` e aparece destacada para o gestor revisar, com a foto.
+
+**Regra de reconhecimento:**
+- Reconhece quando a similaridade com o melhor candidato é **≥ limiar** e a diferença para o segundo melhor é **≥ margem** (evita confundir duas pessoas parecidas). Limiar e margem ficam em `ponto.config`; valores iniciais conservadores, **calibrados no tablet real** (luz e câmera do local) antes de ligar para todos.
+- Similaridade na **faixa de dúvida** (logo abaixo do limiar): repete uma vez **com desafio obrigatório**; se continuar em dúvida, vai para o PIN.
+- O identificador do passo 2 é de uso único e amarrado à estação; a marcação por rosto só é aceita com um reconhecimento bem-sucedido da mesma estação, do mesmo funcionário, dentro dos 60 s.
+- Limite de **20 tentativas de reconhecimento por minuto por estação** (contra enxurrada de tentativas).
+
+**Prova de vida "às vezes":** o servidor sorteia o desafio em **1 de cada 3** reconhecimentos (o funcionário não sabe quando vem), e ele é **obrigatório** na faixa de dúvida e para quem teve marcação `sem_rosto` nos últimos 7 dias. Barra o truque mais comum (foto do colega no celular); máscara ou vídeo bem feito ainda podem passar: aceitável para uso interno. Desafio pedido e não cumprido = não reconhecido (vai para o PIN).
+
+**Cadastro do rosto (painel):**
+- Feito **no próprio tablet** (mesma câmera e luz): o gestor abre o painel no tablet, Funcionários → **"Cadastrar rosto"**, e o sistema tira **5 amostras** com desafio de prova de vida. Só amostras com um único rosto nítido são aceitas.
+- Tabela nova `rosto` (funcionário, descritor, data), RLS ligado, **nenhuma API devolve descritores**. "Refazer cadastro" substitui as amostras.
+- **Funcionário inativado:** os descritores são **apagados** (o descritor não é marcação; pode ser apagado). A marcação e a foto seguem as regras de 11.4.
+- Funcionário sem rosto cadastrado marca pelo PIN normalmente (sem alerta `sem_rosto` até ter cadastro).
+
+**Registro:** cada tentativa grava `reconhecimento` (estação, funcionário candidato, similaridade, desafio, resultado, data), para auditoria e para calibrar o limiar. A marcação feita por rosto guarda o `reconhecimento_id`; `origem_identificacao` = `rosto` ou `pin`.
+
+**Configuração por estação:** `reconhece_rosto` (sim/não). Tablet: sim. Computador da Elgin: não (continua nome + PIN).
+
+**Sem internet (fase 5):** sem servidor não há comparação. Sem internet a estação usa **nome + PIN** (PIN cifrado, 11.5); o tablet guarda também o descritor e a foto, e o servidor compara quando a fila sobe: se o rosto não bater com o funcionário do PIN, a marcação ganha o alerta `rosto_nao_confere`.
+
+**LGPD:** descritor facial é dado biométrico (sensível). Base: prevenção à fraude na identificação em sistema eletrônico (art. 11, II, "g"). Por isso os descritores ficam só no servidor e são apagados quando o funcionário sai. Aviso formal dispensado pelo dono (uso interno, 11.4.10).
+
+**Testes:** os automáticos não rodam o modelo; o módulo de reconhecimento é substituído por um simulado que devolve descritores fixos. A regra (limiar, margem, uso único, desafio, alertas, limite por minuto) é testada no banco. **A qualidade real só se vê no tablet.**
 
 ### 11.5 Marcação sem internet
 
@@ -225,7 +264,8 @@ Mexe em **dois projetos**. Cada fase é publicada e testada antes da seguinte.
 | Fase | O quê | Projeto |
 |---|---|---|
 | 1 | Estação com várias empresas, configuração por estação, abas, layout de tablet; sinal de vida e quadro de saúde (online/último contato/relógio) | ponto |
-| 2 | Foto: Edge Function, compartimento privado, `foto_hash` no hash, miniaturas no painel, aviso LGPD, espaço usado, câmera no quadro de saúde | ponto |
+| 2 | Foto: Edge Function, compartimento privado, `foto_hash` no hash, miniaturas no painel, espaço usado, câmera no quadro de saúde | ponto |
+| 2A | Reconhecimento facial: modelo no tablet, comparação no servidor, cadastro do rosto no painel, prova de vida sorteada, PIN como reserva com alerta `sem_rosto`, calibração no tablet real | ponto |
 | 3 | WhatsApp: telefone do funcionário, fila, envio e filtro de respostas; aviso de estação fora do ar | ponto + Marcus |
 | 4 | Backup: botão no painel, `manifest.txt` e hash registrado; envio mensal ao Drive e expurgo de fotos | ponto + Marcus |
 | 5 | Sem internet: service worker, fila no tablet, PIN cifrado, conferência do relógio, alertas, pendências por PIN errado, fila no quadro de saúde | ponto |
@@ -235,8 +275,9 @@ A fase 5 fica por último por ser a mais complexa e a que muda uma regra central
 Toda regra nova ganha teste em `dev/tests/`. As migrations são novas (0008 em diante); nenhuma já aplicada é editada.
 
 ### 11.10 A confirmar com o dono
-- Texto do aviso de foto aos funcionários (11.4.10) — antes da fase 2.
 - Backup sem o espelho em PDF (11.7) — antes da fase 4.
 - Quem será o dono da pasta no Google Drive do RH (e-mail da conta que compartilha a pasta) — antes da fase 4.
+
+Decidido em 26/09/2026 (depois): reconhecimento facial com o rosto identificando e o PIN como reserva; não reconhecido pede PIN; prova de vida às vezes (1 em 3, sorteada no servidor). Aviso formal aos funcionários dispensado.
 
 Decididos na revisão de 26/09/2026: relógio divergente acima de 5 min; atraso de envio acima de 24 h só como alerta; fotos por 2 anos (até 5); PIN sem internet cifrado com chave pública; aviso no WhatsApp de estação fora do ar.

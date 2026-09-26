@@ -17,7 +17,7 @@ Gerador de escala de trabalho (CLT), site de página única em https://www.escal
 
 Sistema separado do gerador de escala. Especificação em `docs/ponto/ESPECIFICACAO.md`; visão geral e operação no README. Regras de trabalho:
 
-- **Mudou regra de apuração?** Muda a especificação primeiro, depois a migration **nova** (nunca editar migration já aplicada), depois o teste. `cd dev && npm test` precisa ficar verde (112 testes).
+- **Mudou regra de apuração?** Muda a especificação primeiro, depois a migration **nova** (nunca editar migration já aplicada), depois o teste. `cd dev && npm test` precisa ficar verde (140 testes).
 - **Migrations:** `node --env-file=../../marcus-assistente/.env db/migrate.mjs` (no `dev/`). O banco é o **compartilhado** com Saas Financeiro e Marcus: só mexer no schema `ponto` e em `public.ponto_rpc`. Nunca imprimir `DATABASE_URL` nem chaves.
 - **Segurança da API:** o frontend só chama `public.ponto_rpc`. Função nova de API = `ponto.api_<nome>(jsonb)` que se autentica sozinha (token de estação + PIN, ou sessão de admin). Tabelas novas: ligar RLS e revogar de `anon`/`authenticated`. `service_role` nunca no frontend.
 - **Marcação é imutável:** nada de UPDATE/DELETE em `marcacao`. Correção = `ajuste` (acrescenta/desconsidera) com motivo. O relógio vem só de `ponto.agora()`.

@@ -26,6 +26,23 @@
     }
   }
 
+  // Links temporários (5 min) das fotos de prova, pela Edge Function. Devolve {marcacao_id: url}.
+  async function fotos(sessao, ids) {
+    const cfg = window.PONTO_CONFIG;
+    if (!ids || !ids.length || !cfg) return {};
+    try {
+      const r = await fetch(cfg.url + '/functions/v1/ponto-foto', {
+        method: 'POST',
+        headers: { apikey: cfg.anonKey, Authorization: 'Bearer ' + cfg.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'ver', sessao, ids })
+      });
+      const j = await r.json();
+      return j && j.ok ? j.urls : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   const ERROS = {
     rede: 'Sem conexão com o servidor. Tente de novo.',
     sem_configuracao: 'Sistema ainda não configurado.',
@@ -53,6 +70,7 @@
     correcao_invalida: 'Essa correção já foi decidida ou não existe.',
     excecao_invalida: 'Exceção não encontrada.',
     empresa_obrigatoria: 'Escolha a empresa.',
+    foto_invalida: 'Foto inválida.',
     funcao_desconhecida: 'Operação desconhecida.'
   };
   const msgErro = (c) => ERROS[c] || 'Não foi possível concluir (' + c + ').';
@@ -84,5 +102,5 @@
   // Hoje em Recife como YYYY-MM-DD.
   const hojeISO = () => new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
 
-  window.Ponto = { rpc, msgErro, esc, hora, dataHora, dataBR, DIAS_SEMANA, MESES, min, TIPOS, hojeISO, TZ };
+  window.Ponto = { rpc, fotos, msgErro, esc, hora, dataHora, dataBR, DIAS_SEMANA, MESES, min, TIPOS, hojeISO, TZ };
 })();

@@ -3,19 +3,21 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { readFileSync } from 'node:fs';
-import { novoBanco, cenario, fixarRelogio, dia, CHEIO } from './helpers.mjs';
+import { novoBanco, cenario, fixarRelogio, dia, rpc, CHEIO } from './helpers.mjs';
 
 const RAIZ = new URL('../../pontoeletronico/', import.meta.url);
 const abertas = [];
 // Garante que nenhuma página (com seus timers) fique viva se um teste falhar no meio.
 after(() => { for (const d of abertas) { try { d.window.close(); } catch (e) { /* já fechada */ } } });
 
-async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = {} } = {}) {
+// foto: código que substitui foto.js (câmera simulada; o jsdom não tem câmera).
+async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = {}, foto = null } = {}) {
   const arquivo = new URL(caminho, RAIZ);
   const pasta = new URL('./', arquivo);
   let html = readFileSync(arquivo, 'utf8');
   html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) => {
     const arq = src.split('?')[0];
+    if (arq.endsWith('foto.js') && foto) return `<script>${foto}</script>`;
     if (arq.endsWith('config.js')) return `<script>window.PONTO_CONFIG={url:'http://teste',anonKey:'chave-de-teste',imprimirAoMarcar:true,larguraCupomMm:80};</script>`;
     return `<script>${readFileSync(new URL(arq, pasta), 'utf8')}</script>`;
   });
@@ -28,7 +30,14 @@ async function abrir(db, caminho, { localStorage: ls = {}, sessionStorage: ss = 
     beforeParse(w) {
       for (const [k, v] of Object.entries(ls)) w.localStorage.setItem(k, v);
       for (const [k, v] of Object.entries(ss)) w.sessionStorage.setItem(k, v);
-      w.fetch = async (_url, init) => {
+      w.__fotoReqs = [];
+      w.fetch = async (url, init) => {
+        if (String(url).includes('/functions/v1/ponto-foto')) {   // Edge Function simulada: links das fotos
+          const b = JSON.parse(init.body);
+          w.__fotoReqs.push(b);
+          const urls = Object.fromEntries((b.ids || []).map((id) => [id, 'https://img.teste/' + id + '.webp']));
+          return { ok: true, status: 200, json: async () => ({ ok: true, urls }) };
+        }
         const b = JSON.parse(init.body);
         const r = await db.query('select public.ponto_rpc($1, $2::jsonb) as r', [b.p_fn, JSON.stringify(b.p_args)]);
         return { ok: true, json: async () => r.rows[0].r };
@@ -389,6 +398,112 @@ test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
     const p = await abrir(db, 'admin/index.html', { sessionStorage: { ponto_admin_sessao: sessao } });
     await p.esperar(() => p.$('#l-mail'), 'tela de login');
     assert.equal(p.w.sessionStorage.getItem('ponto_admin_sessao'), null);
+    p.fechar();
+  });
+});
+
+// Câmera simulada: "capturar" desenha um aviso na tela e devolve um arquivo fixo.
+const CAMERA_OK = `window.PontoFoto = { cameraOk: null, enviados: [],
+  capturar: async (el) => { el.innerHTML = '<div class="cam">câmera</div>'; window.PontoFoto.cameraOk = true; return { type: 'image/webp', fake: true }; },
+  hash: async () => '${'a'.repeat(64)}',
+  enviar: async (blob, d) => { window.PontoFoto.enviados.push(d); return true; } };`;
+const CAMERA_QUEBRADA = `window.PontoFoto = { cameraOk: null, enviados: [],
+  capturar: async () => { window.PontoFoto.cameraOk = false; return null; },
+  hash: async () => { throw new Error('não deveria calcular'); },
+  enviar: async (b, d) => { window.PontoFoto.enviados.push(d); return true; } };`;
+
+test('tablet com foto de prova', async (t) => {
+  const db = await novoBanco();
+  const c = await cenario(db);
+  await db.exec(`update ponto.estacao set nome = 'Tablet', imprime = false, tira_foto = true`);
+  await fixarRelogio(db, '2026-09-14 10:00');
+  const ls = { ponto_estacao_token: c.token };
+
+  async function marcar(p, idx, pin, tipo) {
+    await p.esperar(() => p.d.querySelectorAll('.nome-btn').length, 'nomes');
+    p.clicar(p.d.querySelectorAll('.nome-btn')[idx]);
+    await p.esperar(() => p.$('.keypad'), 'teclado');
+    await tecl(p, pin); p.clicar(p.$('#ok'));
+    await p.esperar(() => p.$(`[data-tipo="${tipo}"]`), 'botão ' + tipo);
+    p.clicar(p.$(`[data-tipo="${tipo}"]`));
+    await p.esperar(() => p.$('.comprovante'), 'comprovante');
+  }
+
+  await t.test('tira a foto, grava o hash na marcação e envia o arquivo com o id da marcação', async () => {
+    const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK });
+    await marcar(p, 0, '1234', 'entrada');
+    const m = (await db.query('select id::int, foto_hash, foto_exigida from ponto.marcacao')).rows[0];
+    assert.deepEqual([m.foto_hash, m.foto_exigida], ['a'.repeat(64), true]);
+    await p.esperar(() => p.w.PontoFoto.enviados.length === 1, 'envio da foto');
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.PontoFoto.enviados[0])), { token: c.token, marcacaoId: m.id });
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('câmera quebrada: marca sem foto, não envia nada e avisa o quadro de saúde', async () => {
+    await fixarRelogio(db, '2026-09-14 10:05');
+    const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_QUEBRADA });
+    await marcar(p, 1, '9999', 'entrada');
+    const m = (await db.query(`select foto_hash, foto_exigida from ponto.marcacao where funcionario_id = 2`)).rows[0];
+    assert.deepEqual(m, { foto_hash: null, foto_exigida: true });
+    assert.equal(p.w.PontoFoto.enviados.length, 0);
+    const cam = async () => (await db.query('select camera_ok from ponto.estacao')).rows[0].camera_ok;
+    for (let i = 0; i < 100 && (await cam()) !== false; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(await cam(), false);
+    p.fechar();
+  });
+
+  await t.test('estação sem foto não abre a câmera', async () => {
+    await db.exec('update ponto.estacao set tira_foto = false');
+    await fixarRelogio(db, '2026-09-14 13:00');
+    const p = await abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK });
+    await marcar(p, 0, '1234', 'saida_intervalo');
+    assert.equal(p.w.PontoFoto.cameraOk, null, 'capturar não foi chamado');
+    const m = (await db.query(`select foto_hash, foto_exigida from ponto.marcacao where tipo = 'saida_intervalo'`)).rows[0];
+    assert.deepEqual(m, { foto_hash: null, foto_exigida: false });
+    p.fechar();
+  });
+});
+
+test('painel: relatório de marcações e fotos, espaço e câmera', async (t) => {
+  const db = await novoBanco();
+  const c = await cenario(db);
+  await db.exec(`update ponto.estacao set nome = 'Tablet', tira_foto = true, camera_ok = false, ultimo_contato = '2026-09-14 10:00-03';
+    insert into ponto.admin (email, senha_hash) values ('dono@teste.com', extensions.crypt('senha-teste', extensions.gen_salt('bf', 4)));`);
+  await fixarRelogio(db, '2026-09-14 10:00');
+  const r1 = await rpc(db, 'registrar', { token: c.token, funcionario_id: 1, pin: '1234', tipo: 'entrada', foto_hash: 'b'.repeat(64) });
+  await db.query(`select ponto.foto_registrar($1, '1/2026-09/1.webp', 9000, 'image/webp')`, [r1.marcacao_id]);
+  await fixarRelogio(db, '2026-09-14 13:00');
+  await rpc(db, 'registrar', { token: c.token, funcionario_id: 1, pin: '1234', tipo: 'saida_intervalo' });
+  const sessao = (await rpc(db, 'admin_login', { email: 'dono@teste.com', senha: 'senha-teste' })).sessao;
+  const ss = { ponto_admin_sessao: sessao };
+
+  await t.test('relatório mostra a miniatura e a marcação sem foto', async () => {
+    const p = await abrir(db, 'admin/index.html', { sessionStorage: ss });
+    await p.esperar(() => p.$('.tabs'), 'painel');
+    p.clicar(p.$('[data-tab="relatorios"]'));
+    await p.esperar(() => p.$('#r-tipo'), 'relatórios');
+    p.$('#r-tipo').value = 'marcacoes'; p.$('#r-mes').value = '2026-09'; p.$('#r-f').value = '1';
+    p.clicar(p.$('#r-ok'));
+    await p.esperar(() => p.$('#rel img.foto-mini'), 'miniatura');
+    assert.equal(p.$('#rel img.foto-mini').getAttribute('src'), `https://img.teste/${r1.marcacao_id}.webp`);
+    assert.match(p.$('#rel').textContent, /sem foto \(câmera falhou\)/);
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.__fotoReqs.map((b) => [b.acao, b.sessao, b.ids]))), [["ver", sessao, [r1.marcacao_id]]]);
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('configuração mostra espaço das fotos e câmera com falha', async () => {
+    const p = await abrir(db, 'admin/index.html', { sessionStorage: ss });
+    await p.esperar(() => p.$('.tabs'), 'painel');
+    p.clicar(p.$('[data-tab="config"]'));
+    await p.esperar(() => p.texto().includes('Fotos do ponto'), 'espaço');
+    assert.match(p.texto(), /Fotos do ponto: 0 MB \(1 fotos\)/);
+    assert.match(p.texto(), /câmera com falha/);
+    assert.match(p.texto(), /Principal · imprime · foto/);
+    p.clicar(p.$('[data-edes]'));
+    await p.esperar(() => p.$('#es-foto'), 'formulário');
+    assert.equal(p.$('#es-foto').checked, true);
     p.fechar();
   });
 });
