@@ -50,18 +50,20 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/index.html` | Tela do computador do balcão: escolhe o nome, digita o PIN, marca (entrada, saída p/ intervalo, volta, saída), comprovante, pedido de correção |
 | `pontoeletronico/admin/` | Painel do gestor: funcionários e jornadas, domingos de folga e exceções, correções, relatórios (espelho mensal/PDF, banco de horas, faltas), empresas e estações |
 | `pontoeletronico/api.js`, `config.js`, `ponto.css` | Cliente da API, configuração pública, estilo |
-| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0007 |
-| `dev/tests/` | 92 testes: regras de apuração, segurança e as telas (jsdom ligado a um Postgres em memória) |
+| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0008 (todas aplicadas; 0008 = versão 2, fase 1, aplicada em 26/09/2026) |
+| `dev/tests/` | 112 testes: regras de apuração, segurança, estações e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 92 testes, ~15 s, não toca no banco real
+npm test                                                                   # 112 testes, ~45 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
 ```
+
+**Não aplicar migration pelo SQL Editor do Supabase:** o painel pode estar aberto no projeto errado (em 26/09/2026 a 0008 foi colada no projeto do DirectMenu e falhou com `schema "ponto" does not exist`), e o Editor não registra a migration em `ponto.migracoes`, então o script tentaria aplicá-la de novo. Sempre pelo `migrate.mjs`.
 
 `DATABASE_URL` vem do `.env` do `marcus-assistente` (mesmo banco). Nunca copiar essa URL para este repositório. A pasta `~/.credenciais` citada no CLAUDE.md raiz **não existe** neste computador.
 
@@ -151,7 +153,13 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 
 ## Pendências / próximos passos
 
-- [ ] **Nova funcionalidade** — a definir (combinada em 21/09/2026, ainda sem especificação). Registrar aqui a spec e as decisões quando começar.
+- [ ] **Ponto, versão 2** (tablet, foto como prova, comprovante pelo WhatsApp do Marcus, marcação sem internet, backup no Drive, saúde das estações). Especificação aprovada em 26/09/2026: `docs/ponto/ESPECIFICACAO.md`, seção 11. Fases:
+  - [x] Fase 1 (código pronto e testado, **só local**): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 **aplicada** no banco real em 26/09/2026. **Falta:** publicar (`git push`).
+  - [ ] Fase 2: foto (Edge Function, compartimento privado, hash na cadeia). Antes: texto do aviso de foto aos funcionários.
+  - [ ] Fase 3: WhatsApp pelo Marcus + aviso de estação fora do ar (mexe no `marcus-assistente`).
+  - [ ] Fase 4: backup (botão + Drive do RH + `manifest.txt`). Antes: confirmar backup sem PDF e o dono da pasta no Drive.
+  - [ ] Fase 5: marcação sem internet (PIN cifrado com chave pública).
+- [ ] **Nova funcionalidade do gerador de escala** — a definir (combinada em 21/09/2026, ainda sem especificação).
 - [ ] Decidir se vale trocar o arquivo único por estrutura com `css/` e `js/` separados (só se a funcionalidade nova crescer o suficiente).
 
 ## Histórico
@@ -162,3 +170,5 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Corrigidos 12x36 entre semanas e escape de HTML / validação do `.json` carregado (publicado) |
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
+| 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
+| 26/09/2026 | Ponto v2 especificado e aprovado (seção 11 da especificação). Fase 1 implementada localmente: estação com várias empresas (abas no tablet), impressão por estação, sinal de vida e quadro de saúde; migration 0008; 112 testes |

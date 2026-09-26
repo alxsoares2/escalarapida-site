@@ -502,10 +502,42 @@
   }
 
   /* ---------- aba: empresas e estações ---------- */
+  // Quadro de saúde: online = sinal nos últimos 10 min; relógio OK = diferença de até 5 min.
+  function saudeEstacao(s) {
+    if (!s.ativa) return '<span class="muted">—</span>';
+    if (!s.ultimo_contato) return '<span class="badge">nunca conectou</span>';
+    const partes = [s.online ? '<span class="badge ok">online</span>' : '<span class="badge bad">fora do ar</span>',
+      '<span class="muted">último contato ' + esc(dataHora(s.ultimo_contato)) + '</span>'];
+    if (s.relogio_ok === false) {
+      const m = Math.round(Math.abs(s.relogio_dif_ms) / 60000);
+      partes.push('<span class="badge warn">relógio ' + m + ' min ' + (s.relogio_dif_ms > 0 ? 'adiantado' : 'atrasado') + '</span>');
+    }
+    return partes.join(' ');
+  }
+
+  function formEstacao(s, erro) {
+    const ids = s ? s.empresa_ids : [S.empresa];
+    $('form-es').innerHTML = '<div class="card" style="margin-top:12px;background:var(--bg)"><h3>' + (s ? 'Editar ' + esc(s.nome) : 'Nova estação') + '</h3>' + msg(erro) +
+      '<div class="row"><div class="field" style="max-width:280px"><label for="es-nome">Nome</label><input id="es-nome" placeholder="Ex.: Tablet da entrada" value="' + esc(s ? s.nome : '') + '"></div></div>' +
+      '<div class="row"><span class="muted">Empresas atendidas (uma aba para cada):</span>' +
+      S.empresas.map((e) => '<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" class="es-emp" value="' + e.id + '"' + (ids.includes(e.id) ? ' checked' : '') + '> ' + esc(e.nome) + '</label>').join('') + '</div>' +
+      '<div class="row"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-imp"' + (!s || s.imprime ? ' checked' : '') + '> Imprime o comprovante (impressora térmica)</label>' +
+      '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="es-res"' + (s && s.reserva ? ' checked' : '') + '> Estação reserva (contingência)</label></div>' +
+      '<div style="display:flex;gap:8px"><button class="btn pri" id="es-ok">' + (s ? 'Salvar' : 'Gerar código de ativação') + '</button><button class="btn" id="es-x">Cancelar</button></div></div>';
+    $('es-x').onclick = () => { $('form-es').innerHTML = ''; };
+    $('es-ok').onclick = async () => {
+      const args = { nome: val('es-nome'), empresa_ids: [...document.querySelectorAll('.es-emp:checked')].map((c) => Number(c.value)),
+        imprime: $('es-imp').checked, reserva: $('es-res').checked };
+      if (!args.empresa_ids.length) return formEstacao(s, 'Marque pelo menos uma empresa.');
+      const r = s ? await chamar('admin_salvar_estacao', Object.assign({ id: s.id }, args)) : await chamar('admin_criar_estacao', args);
+      if (!r.ok) return formEstacao(s, msgErro(r.erro));
+      if (s) { toast('Estação salva.'); abaConfig(); } else abaConfig(r.token);
+    };
+  }
+
   async function abaConfig(novoToken) {
     let estacoes = [];
-    if (S.empresa) { const r = await chamar('admin_estacoes', { empresa_id: S.empresa }); estacoes = r.ok ? r.estacoes : []; }
-    const emp = S.empresas.find((e) => e.id === S.empresa);
+    if (S.empresas.length) { const r = await chamar('admin_estacoes'); estacoes = r.ok ? r.estacoes : []; }
     const site = location.origin + location.pathname.replace(/admin\/?(index\.html)?$/, '');
 
     $('aba').innerHTML =
@@ -515,13 +547,16 @@
         : '<p class="muted">Nenhuma empresa. Cadastre a primeira abaixo.</p>') +
       '<div id="form-emp" style="margin-top:12px"></div><div style="margin-top:10px"><button class="btn sm pri" id="nova-emp">+ Nova empresa</button></div></div>' +
 
-      (S.empresa ? '<div class="card"><h2>Estações (computadores de marcação) — ' + esc(emp ? emp.nome : '') + '</h2>' +
+      (S.empresa ? '<div class="card"><h2>Estações (tablets e computadores de marcação)</h2>' +
         (novoToken ? '<div class="msg aviso"><b>Código de ativação (aparece só uma vez):</b><br><code id="tok" style="font-size:16px;word-break:break-all">' + esc(novoToken) + '</code>' +
-          '<br><br>No computador do balcão, abra <b>' + esc(site) + '</b> e cole esse código. <button class="btn sm" id="copiar">Copiar código</button></div>' : '') +
-        (estacoes.length ? '<table class="t"><tr><th>Nome</th><th>Situação</th><th>Criada em</th><th></th></tr>' +
-          estacoes.map((s) => '<tr><td>' + esc(s.nome) + '</td><td>' + (s.ativa ? '<span class="badge ok">ativa</span>' : '<span class="badge">desativada</span>') + '</td><td>' + esc(dataHora(s.criado_em)) + '</td><td class="n">' +
-            (s.ativa ? '<button class="btn sm bad" data-des="' + s.id + '">Desativar</button>' : '') + '</td></tr>').join('') + '</table>' : '<p class="muted">Nenhuma estação.</p>') +
-        '<div class="row" style="margin-top:12px"><div class="field" style="max-width:280px"><label for="es-nome">Nome da nova estação</label><input id="es-nome" placeholder="Ex.: Balcão"></div><button class="btn pri" id="es-criar">Gerar código de ativação</button></div></div>' +
+          '<br><br>No tablet ou computador, abra <b>' + esc(site) + '</b> e cole esse código. <button class="btn sm" id="copiar">Copiar código</button></div>' : '') +
+        (estacoes.length ? '<div class="scroll"><table class="t"><tr><th>Nome</th><th>Empresas</th><th>Uso</th><th>Saúde</th><th>Situação</th><th></th></tr>' +
+          estacoes.map((s) => '<tr><td>' + esc(s.nome) + '</td><td>' + esc((s.empresas || []).join(', ')) + '</td><td>' +
+            (s.reserva ? 'Reserva' : 'Principal') + (s.imprime ? ' · imprime' : '') + '</td><td>' + saudeEstacao(s) + '</td><td>' +
+            (s.ativa ? '<span class="badge ok">ativa</span>' : '<span class="badge">desativada</span>') + '</td><td class="n">' +
+            (s.ativa ? '<button class="btn sm" data-edes="' + s.id + '">Editar</button> <button class="btn sm bad" data-des="' + s.id + '">Desativar</button>' : '') + '</td></tr>').join('') + '</table></div>'
+          : '<p class="muted">Nenhuma estação.</p>') +
+        '<div id="form-es"></div><div style="margin-top:10px"><button class="btn sm pri" id="es-nova">+ Nova estação</button></div></div>' +
 
         '<div class="card"><h2>Integridade dos registros</h2><p class="muted" style="margin-bottom:8px">Confere a numeração (NSR) e o encadeamento de hash de todas as marcações da empresa.</p>' +
         '<button class="btn" id="verif">Verificar agora</button> <span id="verif-res"></span></div>' : '');
@@ -540,11 +575,8 @@
     $('nova-emp').onclick = () => formEmp(null);
     $('aba').querySelectorAll('[data-eemp]').forEach((b) => b.onclick = () => formEmp(S.empresas.find((x) => x.id === Number(b.dataset.eemp))));
     if (S.empresa) {
-      $('es-criar').onclick = async () => {
-        const r = await chamar('admin_criar_estacao', { empresa_id: S.empresa, nome: val('es-nome') });
-        if (!r.ok) return toast(msgErro(r.erro));
-        abaConfig(r.token);
-      };
+      $('es-nova').onclick = () => formEstacao(null);
+      $('aba').querySelectorAll('[data-edes]').forEach((b) => b.onclick = () => formEstacao(estacoes.find((x) => x.id === Number(b.dataset.edes))));
       $('aba').querySelectorAll('[data-des]').forEach((b) => b.onclick = async () => {
         if (!confirm('Desativar esta estação? O computador deixa de poder marcar ponto.')) return;
         await chamar('admin_desativar_estacao', { id: Number(b.dataset.des) }); abaConfig();

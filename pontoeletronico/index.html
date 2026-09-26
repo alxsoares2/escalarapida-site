@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Ponto — Marcação</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-<link rel="stylesheet" href="ponto.css?v=20260921b" />
+<link rel="stylesheet" href="ponto.css?v=20260926a" />
 </head>
 <body class="estacao">
 
@@ -24,8 +24,8 @@
 <main class="est-corpo" id="corpo"></main>
 <div id="cupom" class="cupom" aria-hidden="true" style="display:none"></div>
 
-<script src="config.js?v=20260921b"></script>
-<script src="api.js?v=20260921b"></script>
+<script src="config.js?v=20260926a"></script>
+<script src="api.js?v=20260926a"></script>
 <script>
 (function () {
   const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
@@ -64,6 +64,7 @@
   }
 
   let token = null, info = null, offset = 0;
+  let empAtual = null;       // aba (empresa) aberta na lista de nomes
   let sel = null;            // funcionário escolhido {id, nome}
   let pin = '';              // só em memória, apagado ao sair da tela
   let estado = null;         // resposta de "estado" (proximos, ultimas)
@@ -121,24 +122,45 @@
       $('tentar').onclick = () => carregar();
       return;
     }
+    // servidor antigo (sem "empresas"): uma empresa só
+    if (!r.empresas) r.empresas = [Object.assign({}, r.empresa, { funcionarios: r.funcionarios })];
     info = r;
     offset = new Date(r.agora).getTime() - Date.now();
-    $('est-empresa').textContent = r.empresa.nome + ' · ' + r.estacao.nome;
-    $('topo-empresa').textContent = r.empresa.nome;
+    if (!r.empresas.some((e) => e.id === empAtual)) empAtual = r.empresas.length ? r.empresas[0].id : null;
+    const nomes = r.empresas.map((e) => e.nome).join(' · ');
+    $('est-empresa').textContent = (r.empresas.length === 1 ? nomes + ' · ' : '') + r.estacao.nome;
+    $('topo-empresa').textContent = nomes;
     $('bloco-relogio').hidden = false;
     tick();
     irParaLista();
+    sinal();
   }
+
+  // Sinal de vida para o quadro de saúde do painel (último contato e diferença do relógio).
+  async function sinal() {
+    if (!token) return;
+    const r = await rpc('estacao_sinal', { token, relogio: new Date().toISOString() });
+    if (r.ok && r.agora) offset = new Date(r.agora).getTime() - Date.now();
+  }
+  setInterval(sinal, 5 * 60 * 1000);
+
+  const imprime = () => !!(info && info.estacao.imprime !== false) && CFG.imprimirAoMarcar !== false;
 
   function irParaLista(aviso) {
     limpar();
     if (!info) return;
-    const lista = info.funcionarios;
-    corpo.innerHTML = mensagem(aviso && aviso.texto, aviso && aviso.tipo) +
+    const emp = info.empresas.find((e) => e.id === empAtual) || { funcionarios: [] };
+    const lista = emp.funcionarios;
+    const abas = info.empresas.length > 1
+      ? '<div class="emp-tabs" role="tablist">' + info.empresas.map((e) =>
+          '<button class="emp-tab' + (e.id === empAtual ? ' ativa' : '') + '" role="tab" data-emp="' + e.id + '">' + esc(e.nome) + '</button>').join('') + '</div>'
+      : '';
+    corpo.innerHTML = mensagem(aviso && aviso.texto, aviso && aviso.tipo) + abas +
       '<h2 style="text-align:center;font-size:15px;color:var(--mut);margin-bottom:14px;font-weight:500">Quem é você?</h2>' +
       (lista.length
         ? '<div class="nomes">' + lista.map((f) => '<button class="nome-btn" data-id="' + f.id + '">' + esc(f.nome) + '</button>').join('') + '</div>'
         : '<p class="muted" style="text-align:center">Nenhum funcionário cadastrado nesta empresa.</p>');
+    corpo.querySelectorAll('.emp-tab').forEach((b) => b.onclick = () => { empAtual = Number(b.dataset.emp); irParaLista(); });
     corpo.querySelectorAll('.nome-btn').forEach((b) => b.onclick = () => {
       sel = lista.find((f) => f.id === Number(b.dataset.id)); pin = ''; telaPin();
     });
@@ -241,11 +263,14 @@
       '<dt>Marcação</dt><dd>' + esc(TIPOS[c.tipo]) + '</dd>' +
       '<dt>NSR</dt><dd>' + esc(c.nsr) + '</dd>' +
       '<dt>Hash</dt><dd class="hash">' + esc(c.hash) + '</dd></dl></div>' +
-      '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button> <button class="btn" id="reimprimir"><i class="ti ti-printer"></i> Reimprimir</button> <span class="muted" id="cont"></span></div>';
+      '<div class="voltar"><button class="btn pri" id="fechar">Concluir</button>' +
+      (imprime() ? ' <button class="btn" id="reimprimir"><i class="ti ti-printer"></i> Reimprimir</button>' : '') + ' <span class="muted" id="cont"></span></div>';
     $('fechar').onclick = () => irParaLista();
-    $('reimprimir').onclick = () => imprimirCupom(c);
-    // imprime sozinho; com o Chrome em modo --kiosk-printing sai direto na impressora padrão, sem janela
-    if (CFG.imprimirAoMarcar !== false) setTimeout(() => imprimirCupom(c), 150);
+    // imprime sozinho (se a estação imprime); com o Chrome em modo --kiosk-printing sai direto na impressora padrão
+    if (imprime()) {
+      $('reimprimir').onclick = () => imprimirCupom(c);
+      setTimeout(() => imprimirCupom(c), 150);
+    }
     pin = '';
     const cont = () => { $('cont').textContent = 'voltando em ' + seg + 's'; };
     cont();

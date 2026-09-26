@@ -114,17 +114,129 @@ Relatórios:
 4. **Correções pendentes.**
 
 ## 8. Fora de escopo (por enquanto)
-Celular do funcionário, geolocalização, foto/biometria, integração com o gerador de escala, assinatura ICP-Brasil, AFD/AEJ oficiais, venda a terceiros, múltiplos administradores.
+Celular do funcionário, geolocalização, biometria/reconhecimento facial, integração com o gerador de escala, assinatura ICP-Brasil, AFD/AEJ oficiais, venda a terceiros, múltiplos administradores. (Foto como prova, tablet, WhatsApp, marcação sem internet e backup estão na versão 2, seção 11.)
 
-## 9. Estado da implementação (21/09/2026)
+## 9. Estado da implementação (conferido em 26/09/2026)
 
-- **Banco:** migrations 0001–0007 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
-- **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026** (commit `8e339e1`), com a chave `anon` configurada e a conta do gestor criada.
-- **Feito depois, ainda só local (sem `git push`):** só o gestor desvincula computador; impressão automática do comprovante (Elgin i9); espelho novo (A.N., banco acumulado, carga horária). A migration 0007 (espelho) já está no banco real e é compatível com o frontend publicado.
-- **Testes:** 92 automáticos passando (apuração, segurança, telas).
+- **Banco:** migrations 0001–0008 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
+- **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026**, com a chave `anon` configurada e a conta do gestor criada. Impressão automática (Elgin i9), só o gestor desvincula e espelho novo também publicados (commits `173bb45` e `25e5a32`; arquivos no ar iguais ao repositório em 26/09/2026).
+- **Uso real:** ainda não. Em 26/09/2026 o banco tinha 1 empresa, 1 funcionário, 1 estação e 3 marcações, todas de 21/09 (testes da instalação).
+- **Testes:** 112 automáticos passando (apuração, segurança, estações, telas).
+- **Versão 2, fase 1 (26/09/2026), só local:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Falta publicar a tela nova.
 - **Primeiro acesso:** o admin foi criado pela própria página com um código de uso único (só o hash fica no banco), para a senha nunca passar por terceiros.
 
 ## 10. Pontos a confirmar com o dono
 - `incompleto` versus `falta` quando falta só uma marcação (regra do item 5.4).
 - Tempo de bloqueio do PIN (5 min) e limite de tentativas (5).
 - Se o intervalo real maior que o previsto deve entrar no banco (hoje entra: desconta do trabalhado).
+
+## 11. Versão 2: tablet, foto, WhatsApp, sem internet e backup
+
+> **Status: aprovada pelo dono em 26/09/2026** (com os ajustes de revisão: PIN cifrado sem internet, limites de 5 min e 24 h, fotos por 2 anos, saúde da estação com aviso no WhatsApp, resumo do backup com hash registrado). Implementação em fases (11.9). **Cada regra vale a partir da fase em que é publicada**; até lá, valem as seções 1 a 10. Depois de publicadas, as regras daqui substituem as partes das seções 3, 7 e 8 que contradizem.
+
+### 11.1 Decisões do dono
+
+| Tema | Decisão |
+|---|---|
+| Aparelho | **Um tablet Android** fixo, com a página do ponto em modo quiosque (sem app de loja) |
+| Identificação | **PIN + foto como prova.** Sem reconhecimento facial (dado biométrico sensível na LGPD, exige prova de vida e custo) |
+| Empresas | O tablet atende **as 2 empresas**, com **abas por empresa** |
+| Impressão | O tablet **não imprime**. O computador da Elgin i9 continua como **estação reserva**, com impressão |
+| Comprovante | **WhatsApp pelo número do Marcus** (fila no banco, o Marcus envia) |
+| Sem internet | Usa a **hora do Android**, com conferência automática e marcação sinalizada |
+| Fotos | Storage do Supabase, **plano gratuito** (não pagar Storage), compartimento privado |
+| Backup | Mensal, automático, para o **Google Drive do RH**, e botão **"Baixar backup"** no painel |
+| Geolocalização | **Não.** Num tablet fixo não prova nada que o vínculo da estação já não prove |
+
+### 11.2 Estações
+
+- A estação deixa de pertencer a uma empresa só. Nova tabela `estacao_empresa` (estação ↔ empresas que ela atende). As estações atuais migram com a empresa que já têm.
+- Configuração **por estação**, no painel (não mais só em `config.js`): `tira_foto` (sim/não), `imprime` (sim/não), `aceita_sem_internet` (sim/não). Tablet: foto sim, impressão não, sem internet sim. Computador da Elgin: foto não, impressão sim, sem internet não.
+- Na tela, uma **aba por empresa**; cada aba lista só os funcionários ativos daquela empresa. O NSR e o hash encadeado continuam **por empresa**.
+- Continua valendo: token mostrado uma vez, só o hash no banco, só o gestor desvincula.
+
+### 11.3 Tablet (hardware e configuração)
+
+- Android com câmera frontal, suporte fixo na parede, carregador sempre ligado, **luz boa no rosto**.
+- Navegador em modo quiosque (ex.: Fully Kiosk Browser) travado em `/pontoeletronico/`, **sem acesso às configurações do Android** (principalmente data/hora).
+- Layout próprio para tela de toque: botões grandes, retrato.
+
+### 11.4 Foto como prova
+
+1. Depois do PIN, a câmera frontal abre com uma **moldura oval** e uma contagem de 3 s; a foto sai sozinha (o funcionário não escolhe o enquadramento).
+2. Recorte do centro da moldura (sem detecção de rosto), **240 px, WebP, ~10 KB**.
+3. O **SHA-256 da foto entra no cálculo do hash encadeado** da marcação (coluna nova `foto_hash` em `marcacao`). Trocar a foto depois é detectável.
+4. **Câmera com defeito ou recusada não impede a marcação** (seção 3: a marcação nunca é bloqueada); a marcação fica com o alerta `sem_foto`.
+5. **Onde fica:** compartimento **privado** `ponto-fotos` no Supabase Storage, caminho `empresa/AAAA-MM/nsr.webp`. Nunca público (os compartimentos que já existem no projeto são públicos; este não pode ser).
+6. **Envio e leitura:** por uma Supabase Edge Function `ponto-foto` (grátis até 500 mil chamadas/mês), porque o navegador não pode ter a chave `service_role`. Ela se autentica pelas mesmas regras da API (token da estação para enviar; sessão do gestor para ver) e confere que o hash do arquivo bate com o `foto_hash` da marcação.
+7. **Quem vê:** só o gestor, no painel (miniatura ao lado de cada marcação, no dia e nas correções). O funcionário não vê fotos de ninguém.
+8. **Prazo:** fotos guardadas por **2 anos** por padrão, configurável no painel **até 5 anos** (só se o contador/advogado justificar); depois são apagadas. Motivo: quem prova as marcações é o espelho assinado todo mês; a foto serve para dúvidas recentes, e guardar menos reduz a exposição na LGPD. A marcação fica para sempre (com o `foto_hash`, que prova que existiu foto).
+9. **Espaço:** ~1.040 fotos/mês × 10 KB ≈ 125 MB/ano ≈ 250 MB em 2 anos (620 MB no máximo de 5), dentro do 1 GB grátis. Em 26/09/2026 o Storage do projeto usava 12 MB e o banco 18 MB (de 500 MB). O painel mostra o **espaço usado** e avisa acima de 80%.
+10. **Aviso aos funcionários (LGPD):** antes de ligar a foto, cada funcionário recebe e assina um aviso dizendo que a foto é tirada a cada marcação, para que serve (prova de quem marcou), quem vê (só o gestor) e por quanto tempo fica. O texto do aviso fica pronto no painel para imprimir.
+
+### 11.5 Marcação sem internet
+
+**Muda a regra da seção 3.4** ("hora sempre do servidor"): com internet, continua a hora do servidor; **sem internet, vale a hora do Android**, com as proteções abaixo. Só em estações com `aceita_sem_internet`.
+
+- **A página funciona sem internet** (service worker guarda a página e a lista de nomes). A lista **não** leva hashes de PIN para o tablet: um PIN de 4 a 6 dígitos se descobre em segundos se alguém copiar os dados do aparelho.
+- **Conferência do relógio:** com internet, o tablet anota a diferença entre o relógio dele e o do servidor e o instante em que conferiu (contador interno do navegador, que não muda se alguém mexer na hora do Android). Sem internet, calcula a hora esperada = última hora do servidor + tempo corrido no contador.
+- Cada marcação feita sem internet guarda: **hora do Android** (a que vale, truncada no minuto), hora estimada pelo contador, o **PIN cifrado** (abaixo), a foto e um identificador único gerado no tablet (para não duplicar no reenvio). Fica numa fila no próprio tablet.
+- **O PIN nunca fica legível no tablet.** No momento da marcação, o tablet cifra `{PIN, identificador da marcação, funcionário, hora}` com a **chave pública** do servidor (RSA-OAEP pela Web Crypto do navegador, sem biblioteca) e descarta o PIN. Só o servidor, com a chave privada, abre. Quem copiar os dados do tablet não descobre o PIN, nem o próprio tablet consegue ler de volta, e o texto cifrado não serve para outra marcação (leva o identificador e a hora dentro). Não se usa hash/derivação do PIN no tablet: com 4 a 6 dígitos (no máximo 1 milhão de combinações), qualquer valor derivado se quebra testando todas. A chave pública vai na página; a privada fica só no servidor (segredo da Edge Function, nunca no repositório).
+- **Quando a internet volta**, a fila sobe sozinha. O servidor abre o PIN, confere e grava a marcação com `origem = 'sem_internet'`, `hora_dispositivo`, `recebido_em` e os alertas:
+  - `relogio_divergente`: hora do Android difere mais de **5 min** da estimada;
+  - `sem_referencia`: o tablet reiniciou sem internet e não havia como conferir;
+  - `atraso_envio`: chegou mais de **24 h** depois da hora marcada. **É só alerta, não bloqueia:** uma queda de internet num fim de semana não pode virar dezenas de aprovações manuais.
+- **PIN errado sem internet:** a marcação **não** entra. Vai para a fila de correções como pedido pendente (com a foto); se o gestor aprovar, vira uma correção `incluir` com motivo, como qualquer correção (seção 6).
+- As marcações com alerta **entram na apuração**, mas aparecem destacadas no painel e na coluna Obs. do espelho para o gestor revisar; se estiverem erradas, o gestor corrige pelo caminho normal (desconsiderar + incluir).
+- **Ordem do NSR:** o NSR é dado quando a marcação chega ao servidor. Uma marcação feita sem internet pode ter NSR maior que outras de horário posterior. O hash continua encadeado pela ordem do NSR; a apuração usa `marcado_em`.
+- A regra dos 30 s (toque duplo) vale também para marcações sem internet.
+
+### 11.6 Comprovante pelo WhatsApp (pelo Marcus)
+
+- Funcionário ganha os campos `telefone` e `recebe_whatsapp`. Sem telefone, não recebe (o comprovante continua na tela).
+- Cada marcação grava uma mensagem numa **fila no schema `ponto`** (`whatsapp_fila`: telefone, texto, criado_em, enviado_em, tentativas, erro). Texto: empresa, nome, tipo, data/hora, NSR, início do hash e "mensagem automática, não responda". Marcação sem internet leva "registrada sem internet". **Não diz que é compatível com a Portaria 671.**
+- O **Marcus** (outro projeto, `marcus-assistente`) lê a fila no poller que já roda, envia pela Z-API dele e marca como enviada. Interface só por funções do schema `ponto` (`ponto.whatsapp_pegar_lote()`, `ponto.whatsapp_marcar_enviado()`), sem FK entre schemas.
+- **Respostas dos funcionários:** o Marcus consulta `ponto.telefones_funcionarios()`; mensagem vinda desses números **não vai para a IA**. Ele responde um texto fixo, no máximo uma vez por dia por número: "Este número só envia comprovantes de ponto. Dúvidas, fale com o gestor."
+- Falha de envio: até 5 tentativas; depois fica com erro e aparece no painel.
+
+### 11.7 Backup
+
+- **Automático, mensal:** todo dia 1º, de madrugada (Recife), o **Marcus** gera o pacote do mês anterior e envia para uma **pasta do Google Drive do RH**, compartilhada com uma **conta de serviço do Google** (só enxerga aquela pasta; ninguém passa senha).
+- **Conteúdo, por empresa:** marcações, correções e exceções em CSV; apuração diária (as mesmas colunas do espelho: entradas/saídas, H. Diária, Atrasos, Horas Extras, Compensado, A.N., banco acumulado) em CSV; resultado da verificação da cadeia de hash; fotos do mês num `.zip`.
+- **O espelho em PDF não vai no backup automático** (gerar PDF no Marcus exigiria um navegador no servidor). O espelho continua saindo pelo painel, que o gestor imprime todo mês para assinatura.
+- **Resumo com impressão digital:** todo pacote leva um `manifest.txt` com empresa, período, quantidade de registros por arquivo e o SHA-256 de cada arquivo. O **SHA-256 do próprio `manifest.txt` fica gravado no banco** (`backup_registro`: data, período, destino, hash) e aparece no painel. Só o resumo dentro do zip não provaria nada (quem altera o zip refaz o resumo); com o hash registrado fora do zip, qualquer cópia pode ser conferida depois.
+- **Botão "Baixar backup"** no painel: mesmo pacote, para qualquer período, baixado no navegador (também registra o hash).
+- O **expurgo das fotos vencidas** (11.4.8) roda junto com o backup mensal, chamando a Edge Function.
+- Motivo: o plano gratuito do Supabase **não tem backup automático** do banco.
+
+### 11.8 Saúde das estações
+
+Para não descobrir problema só no fechamento do mês.
+
+- **Sinal de vida:** cada estação avisa o servidor a cada **5 min** enquanto a página está aberta (`ultimo_contato`), mandando junto: diferença do relógio para o servidor, câmera funcionando (estações com foto) e quantas marcações estão na fila sem internet.
+- **Quadro no painel**, por estação: online / fora do ar (sem sinal há mais de 10 min), último contato, relógio OK (diferença ≤ 5 min), câmera OK, marcações aguardando envio. No mesmo quadro: comprovantes de WhatsApp com falha e resultado do último backup.
+- **Aviso no WhatsApp do gestor** (pelo Marcus): estação principal **sem sinal há mais de 1 h dentro do horário de funcionamento** (definido por estação no painel; padrão: todos os dias, 08:00–22:00). Um aviso por queda e outro quando volta; sem repetir enquanto continuar fora. Estações marcadas como reserva (computador da Elgin) não geram aviso.
+- Sem internet o tablet não consegue avisar; por isso a queda aparece como "fora do ar" pelo último contato, e a fila pendente é informada quando a conexão volta.
+
+### 11.9 Impacto e ordem de implementação
+
+Mexe em **dois projetos**. Cada fase é publicada e testada antes da seguinte.
+
+| Fase | O quê | Projeto |
+|---|---|---|
+| 1 | Estação com várias empresas, configuração por estação, abas, layout de tablet; sinal de vida e quadro de saúde (online/último contato/relógio) | ponto |
+| 2 | Foto: Edge Function, compartimento privado, `foto_hash` no hash, miniaturas no painel, aviso LGPD, espaço usado, câmera no quadro de saúde | ponto |
+| 3 | WhatsApp: telefone do funcionário, fila, envio e filtro de respostas; aviso de estação fora do ar | ponto + Marcus |
+| 4 | Backup: botão no painel, `manifest.txt` e hash registrado; envio mensal ao Drive e expurgo de fotos | ponto + Marcus |
+| 5 | Sem internet: service worker, fila no tablet, PIN cifrado, conferência do relógio, alertas, pendências por PIN errado, fila no quadro de saúde | ponto |
+
+A fase 5 fica por último por ser a mais complexa e a que muda uma regra central. Até ela, o tablet exige internet (como hoje) e o computador da Elgin é a reserva.
+
+Toda regra nova ganha teste em `dev/tests/`. As migrations são novas (0008 em diante); nenhuma já aplicada é editada.
+
+### 11.10 A confirmar com o dono
+- Texto do aviso de foto aos funcionários (11.4.10) — antes da fase 2.
+- Backup sem o espelho em PDF (11.7) — antes da fase 4.
+- Quem será o dono da pasta no Google Drive do RH (e-mail da conta que compartilha a pasta) — antes da fase 4.
+
+Decididos na revisão de 26/09/2026: relógio divergente acima de 5 min; atraso de envio acima de 24 h só como alerta; fotos por 2 anos (até 5); PIN sem internet cifrado com chave pública; aviso no WhatsApp de estação fora do ar.

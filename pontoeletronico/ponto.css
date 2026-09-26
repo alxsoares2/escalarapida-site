@@ -88,6 +88,19 @@ body.estacao{display:flex;flex-direction:column}
 .comprovante .hash{font-family:ui-monospace,Consolas,monospace;font-size:11px;word-break:break-all}
 .ok-big{font-size:46px;text-align:center;color:var(--ok)}
 .voltar{margin-top:1rem;text-align:center}
+/* abas por empresa (estação que atende mais de uma empresa, ex.: tablet) */
+.emp-tabs{display:flex;gap:8px;margin-bottom:16px}
+.emp-tab{flex:1;padding:14px 10px;font-size:17px;font-weight:600;border-radius:12px;border:.5px solid var(--line);background:var(--bg);color:var(--mut);cursor:pointer}
+.emp-tab.ativa{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+/* tela de toque (tablet): alvos maiores */
+@media (pointer:coarse){
+  .nome-btn{padding:28px 12px;font-size:20px}
+  .pinbox{max-width:380px}
+  .keypad{gap:12px}
+  .keypad button{padding:22px 0;font-size:30px}
+  .keypad .acao{font-size:16px}
+  .emp-tab{padding:18px 10px;font-size:19px}
+}
 .ultimas{margin-top:1rem;font-size:13px}
 .ultimas li{list-style:none;padding:5px 0;border-bottom:.5px solid var(--line);display:flex;justify-content:space-between;gap:8px}
 

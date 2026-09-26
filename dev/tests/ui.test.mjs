@@ -190,6 +190,72 @@ test('estação: ativar computador, marcar ponto, comprovante e erros', async (t
 
 function digitar_ok(p, sel, v) { p.$(sel).value = v; }
 
+test('tablet: abas por empresa, sem impressão e sinal de vida', async (t) => {
+  const db = await novoBanco();
+  const c = await cenario(db);
+  await db.exec(`insert into ponto.empresa (nome) values ('Outra');
+    insert into ponto.funcionario (empresa_id, nome, pin_hash, inicio_controle)
+      values (2, 'Carla', extensions.crypt('4321', extensions.gen_salt('bf', 4)), '2026-09-01');
+    insert into ponto.estacao_empresa (estacao_id, empresa_id) values (1, 2);
+    update ponto.estacao set nome = 'Tablet', imprime = false;`);
+  await fixarRelogio(db, '2026-09-14 10:00');
+  const ls = { ponto_estacao_token: c.token };
+
+  await t.test('uma aba por empresa; trocar de aba troca a lista de nomes', async () => {
+    const p = await abrir(db, 'index.html', { localStorage: ls });
+    await p.esperar(() => p.d.querySelectorAll('.emp-tab').length === 2, 'abas');
+    assert.deepEqual([...p.d.querySelectorAll('.emp-tab')].map((b) => b.textContent), ['Basílico', 'Outra']);
+    assert.match(p.$('.emp-tab.ativa').textContent, /Basílico/);
+    assert.deepEqual([...p.d.querySelectorAll('.nome-btn')].map((b) => b.textContent), ['Ana', 'Beto']);
+    p.clicar(p.d.querySelectorAll('.emp-tab')[1]);
+    await p.esperar(() => p.$('.emp-tab.ativa').textContent === 'Outra', 'aba Outra');
+    assert.deepEqual([...p.d.querySelectorAll('.nome-btn')].map((b) => b.textContent), ['Carla']);
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+
+  await t.test('marca pela segunda empresa, não imprime e volta para a mesma aba', async () => {
+    const p = await abrir(db, 'index.html', { localStorage: ls });
+    await p.esperar(() => p.d.querySelectorAll('.emp-tab').length === 2, 'abas');
+    p.clicar(p.d.querySelectorAll('.emp-tab')[1]);
+    await p.esperar(() => p.$('.nome-btn') && p.$('.nome-btn').textContent === 'Carla', 'Carla');
+    p.clicar(p.$('.nome-btn'));
+    await p.esperar(() => p.$('.keypad'), 'teclado');
+    await tecl(p, '4321'); p.clicar(p.$('#ok'));
+    await p.esperar(() => p.$('[data-tipo="entrada"]'), 'botão de entrada');
+    p.clicar(p.$('[data-tipo="entrada"]'));
+    await p.esperar(() => p.$('.comprovante'), 'comprovante');
+    assert.match(p.texto(), /Outra/);
+    await new Promise((r) => setTimeout(r, 250));
+    assert.equal(p.w.__prints, 0, 'estação sem impressora não imprime');
+    assert.equal(p.$('#reimprimir'), null);
+    p.clicar(p.$('#fechar'));
+    await p.esperar(() => p.$('.emp-tab.ativa'), 'lista');
+    assert.equal(p.$('.emp-tab.ativa').textContent, 'Outra');
+    const m = (await db.query('select empresa_id, nsr::int from ponto.marcacao')).rows;
+    assert.deepEqual(m, [{ empresa_id: 2, nsr: 1 }]);
+    p.fechar();
+  });
+
+  await t.test('ao abrir, a tela manda o sinal de vida', async () => {
+    await db.exec('update ponto.estacao set ultimo_contato = null');
+    const p = await abrir(db, 'index.html', { localStorage: ls });
+    await p.esperar(() => p.$('.emp-tab'), 'abas');
+    const ok = async () => (await db.query('select ultimo_contato from ponto.estacao')).rows[0].ultimo_contato;
+    for (let i = 0; i < 100 && !(await ok()); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(await ok(), 'último contato gravado');
+    p.fechar();
+  });
+
+  await t.test('estação de uma empresa só não mostra abas', async () => {
+    await db.exec('delete from ponto.estacao_empresa where empresa_id = 2');
+    const p = await abrir(db, 'index.html', { localStorage: ls });
+    await p.esperar(() => p.d.querySelectorAll('.nome-btn').length === 2, 'nomes');
+    assert.equal(p.$('.emp-tabs'), null);
+    p.fechar();
+  });
+});
+
 test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
   const db = await novoBanco();
   await cenario(db);
@@ -287,11 +353,15 @@ test('painel do gestor: primeiro acesso, login e todas as abas', async (t) => {
     const p = await abrir(db, 'admin/index.html', { sessionStorage: { ponto_admin_sessao: sessao } });
     await p.esperar(() => p.$('.tabs'), 'painel');
     p.clicar(p.$('[data-tab="config"]'));
-    await p.esperar(() => p.$('#es-nome'), 'estações');
-    p.$('#es-nome').value = 'Caixa 2'; p.clicar(p.$('#es-criar'));
+    await p.esperar(() => p.$('#es-nova'), 'estações');
+    p.clicar(p.$('#es-nova'));
+    await p.esperar(() => p.$('#es-nome'), 'formulário de estação');
+    p.$('#es-nome').value = 'Caixa 2'; p.clicar(p.$('#es-ok'));
     await p.esperar(() => p.$('#tok'), 'código gerado');
     const token = p.$('#tok').textContent;
     assert.equal(token.length, 48);
+    // a estação nova aparece no quadro, ainda sem sinal de vida
+    assert.match(p.texto(), /Caixa 2.*Basílico.*nunca conectou/);
     p.clicar(p.$('#verif'));
     await p.esperar(() => p.texto().includes('Íntegro'), 'verificação de integridade');
     const est = await db.query('select ponto.estacao_do_token($1) as e', [token]);
