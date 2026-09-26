@@ -7,10 +7,13 @@
   const RELIGAR_MS = 10000;    // nova tentativa depois de uma falha ou queda da câmera
 
   let stream = null, video = null, alvo = null, religar = null;
+  let abrindo = null;       // pedido de câmera em andamento (nunca dois ao mesmo tempo)
+  let bloqueada = false;    // permissão negada/fechada: não insiste sozinho (senão o aviso some e volta)
+  let vigiando = false;
 
   const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
-  const comPrazo = (p, ms) => Promise.race([p, esperar(ms).then(() => { throw new Error('prazo'); })]);
   const paraBlob = (canvas, tipo, q) => new Promise((r) => { try { canvas.toBlob(r, tipo, q); } catch (e) { r(null); } });
+  const MIDIA = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
 
   function ativa() {
     return !!(stream && video && video.videoWidth && stream.getVideoTracks().some((t) => t.readyState === 'live'));
@@ -20,20 +23,64 @@
     stream = null; video = null;
   }
   function agendarReligar() {
-    if (religar || !alvo) return;
+    if (religar || !alvo || bloqueada) return;
     religar = setTimeout(() => { religar = null; ligar(); }, RELIGAR_MS);
+  }
+  // Mensagem no quadro da câmera (ex.: pedir para permitir). Com botão, o toque também serve de gesto do usuário.
+  function aviso(texto, comBotao) {
+    if (!alvo) return;
+    alvo.hidden = false;
+    alvo.innerHTML = '<div class="cam-aviso"><span>' + texto + '</span>' +
+      (comBotao ? '<button type="button" class="btn sm">Ativar câmera</button>' : '') + '</div>';
+    const b = alvo.querySelector('button');
+    if (b) b.onclick = () => { bloqueada = false; ligar(); };
+  }
+  async function permissao() {
+    try { return (await navigator.permissions.query({ name: 'camera' })).state; } catch (e) { return 'desconhecida'; }
+  }
+  // Quando a permissão muda (ex.: liberada no cadeado da barra de endereço), tenta de novo sozinho.
+  async function vigiarPermissao() {
+    if (vigiando) return;
+    vigiando = true;
+    try {
+      const st = await navigator.permissions.query({ name: 'camera' });
+      st.onchange = () => { if (st.state !== 'denied' && alvo) { bloqueada = false; ligar(); } };
+    } catch (e) { /* navegador sem Permissions API */ }
+  }
+  // Pede a câmera. Se já tem permissão, espera no máximo ESPERA_MS; se o aviso de permissão está
+  // aberto, espera a pessoa decidir (sem prazo). Stream que chegar depois do prazo é fechado.
+  async function pedirCamera(md, comPrazo) {
+    const pedido = md.getUserMedia(MIDIA);
+    if (!comPrazo) return pedido;
+    let venceu = false;
+    const prazo = esperar(ESPERA_MS).then(() => { venceu = true; throw new Error('prazo'); });
+    pedido.then((s) => { if (venceu) s.getTracks().forEach((t) => t.stop()); }, () => {});
+    return Promise.race([pedido, prazo]);
   }
 
   // Liga a câmera e mostra a imagem ao vivo em "container" (fica ligada até desligar()).
-  async function ligar(container) {
+  function ligar(container) {
     if (container) alvo = container;
-    if (!alvo) return false;
-    if (ativa()) return true;
+    if (!alvo) return Promise.resolve(false);
+    if (ativa()) return Promise.resolve(true);
+    if (!abrindo) abrindo = abrir().finally(() => { abrindo = null; });
+    return abrindo;
+  }
+
+  async function abrir() {
     parar();
     const md = navigator.mediaDevices;
     if (!md || !md.getUserMedia) { PontoFoto.cameraOk = false; alvo.hidden = true; return false; }
+    vigiarPermissao();
+    const perm = await permissao();
+    if (perm === 'denied') {
+      bloqueada = true; PontoFoto.cameraOk = false;
+      aviso('Câmera bloqueada neste navegador. Libere no cadeado ao lado do endereço.', true);
+      return false;
+    }
+    if (perm === 'prompt') aviso('Toque em <b>Permitir</b> no aviso do navegador para usar a câmera.');
     try {
-      stream = await comPrazo(md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }), ESPERA_MS);
+      stream = await pedirCamera(md, perm === 'granted');
       alvo.innerHTML = '<video playsinline muted autoplay></video>';
       video = alvo.querySelector('video');
       video.srcObject = stream;
@@ -47,15 +94,24 @@
       return true;
     } catch (e) {
       parar();
-      alvo.hidden = true;
       PontoFoto.cameraOk = false;
-      agendarReligar();
+      if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+        // negou ou fechou o aviso: não pede de novo sozinho; o botão (ou liberar no cadeado) tenta outra vez
+        bloqueada = true;
+        aviso('A câmera não foi liberada.', true);
+      } else if (e && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')) {
+        aviso('Nenhuma câmera encontrada neste aparelho.', true);
+      } else {
+        aviso('Câmera indisponível. Tentando de novo…', true);
+        agendarReligar();
+      }
       return false;
     }
   }
 
   function desligar() {
     clearTimeout(religar); religar = null;
+    bloqueada = false;
     parar();
     if (alvo) { alvo.hidden = true; alvo.innerHTML = ''; }
     alvo = null;
@@ -63,12 +119,14 @@
   }
 
   // volta de tela apagada / aba em segundo plano, ou câmera travada sem aviso
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && alvo && !ativa()) ligar(); });
-  setInterval(() => { if (alvo && !ativa() && !religar) ligar(); }, 60000);
+  const tentarDeNovo = () => alvo && !ativa() && !religar && !abrindo && !bloqueada;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && tentarDeNovo()) ligar(); });
+  setInterval(() => { if (tentarDeNovo()) ligar(); }, 60000);
 
   // Quadro atual da câmera: recorte quadrado no centro, reduzido para 240 px, WebP (ou JPEG).
+  // Nunca espera um aviso de permissão: a marcação não pode travar por causa da câmera.
   async function capturarAgora() {
-    if (!ativa()) await ligar();
+    if (!ativa() && !abrindo && !bloqueada) await Promise.race([ligar(), esperar(3000)]);
     if (!ativa()) return null;
     try {
       const vw = video.videoWidth, vh = video.videoHeight, lado = Math.min(vw, vh) * 0.8;

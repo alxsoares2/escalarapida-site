@@ -53,14 +53,14 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/foto.js` | Câmera da foto de prova: sempre ligada na tela da estação, captura no toque (240 px, WebP), SHA-256 e envio pela Edge Function |
 | `dev/supabase/functions/ponto-foto/` | Edge Function das fotos: `handler.js` (lógica, testada no Node) + `index.ts` (liga ao banco e ao Storage). Fica em `dev/`, bloqueada no site |
 | `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0009, todas aplicadas (0009 = fase 2, foto) |
-| `dev/tests/` | 141 testes: regras de apuração, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
+| `dev/tests/` | 146 testes: regras de apuração, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 141 testes, ~60 s, não toca no banco real
+npm test                                                                   # 146 testes, ~60 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
 npx supabase functions deploy ponto-foto --project-ref dhmlltvdyhavpoyazaph --no-verify-jwt --workdir .   # publica a Edge Function das fotos (precisa de `npx supabase login` uma vez)
@@ -175,6 +175,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
 | 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
+| 26/09/2026 | Corrigido: com o aviso "Permitir câmera?" aberto, a tela pedia a câmera de novo a cada 10 s e o aviso sumia antes do clique. Agora é um pedido só, sem prazo; câmera bloqueada mostra instrução e botão "Ativar câmera"; marcar ponto nunca espera a câmera |
 | 26/09/2026 | Foto: câmera sempre ligada na tela (foto no instante do toque, sem contagem); religa sozinha |
 | 26/09/2026 | Fase 2 do ponto v2 publicada (foto como prova, Edge Function `ponto-foto`, migration 0009); 140 testes. Reconhecimento facial especificado como fase 2A |
 | 26/09/2026 | Ponto v2 especificado e aprovado (seção 11 da especificação). Fase 1 publicada: estação com várias empresas (abas no tablet), impressão por estação, sinal de vida e quadro de saúde; migration 0008; 112 testes |

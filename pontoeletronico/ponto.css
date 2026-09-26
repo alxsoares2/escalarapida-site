@@ -95,6 +95,8 @@ body.estacao{display:flex;flex-direction:column}
 /* câmera da foto de prova: sempre ligada, abaixo do relógio (a pessoa já está de frente) */
 .cam-vivo{width:176px;aspect-ratio:4/3;margin:10px auto 0;border-radius:12px;overflow:hidden;background:#000;border:.5px solid var(--line)}
 .cam-vivo video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.cam-aviso{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:10px;color:#fff;font-size:12px;line-height:1.35;text-align:center}
+.cam-aviso .btn{background:#fff;color:#1a1a18;border-color:#fff}
 .foto-mini{width:56px;height:56px;border-radius:8px;object-fit:cover;display:block;border:.5px solid var(--line)}
 /* tela de toque (tablet): alvos maiores */
 @media (pointer:coarse){
