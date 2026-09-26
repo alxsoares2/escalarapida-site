@@ -140,12 +140,15 @@ test('apuração dia a dia (regras da especificação)', async (t) => {
     assert.equal(b['2026-09-25'].status, 'falta');
   });
 
-  await t.test('correção do dono completa o dia incompleto (volta do intervalo esquecida)', async () => {
+  await t.test('saiu no intervalo e não voltou: vale até a saída para o intervalo; a volta esquecida corrige (5.4A)', async () => {
     const corrig = { sessao, funcionario_id: 1, tipo: 'incluir', motivo: 'esqueceu de bater' };
     assert.equal((await rpc(db, 'admin_criar_correcao', { ...corrig, tipo_marcacao: 'saida', marcado_em: '2026-09-27T16:15' })).ok, true);
     let x = await apurar(db);
-    assert.equal(x['2026-09-27'].status, 'incompleto');
-    assert.ok(x['2026-09-27'].alertas.includes('sem_volta_intervalo'));
+    // entrada 10:00, saída p/ intervalo 13:00, saída 16:15, sem volta: 3h trabalhadas de 6h esperadas
+    assert.equal(x['2026-09-27'].status, 'trabalho');
+    assert.ok(x['2026-09-27'].alertas.includes('saiu_no_intervalo'));
+    assert.equal(x['2026-09-27'].trabalhado_min, 180);
+    assert.equal(x['2026-09-27'].saldo_min, -180);
     assert.equal((await rpc(db, 'admin_criar_correcao', { ...corrig, tipo_marcacao: 'volta_intervalo', marcado_em: '2026-09-27T13:15' })).ok, true);
     x = await apurar(db);
     assert.equal(x['2026-09-27'].status, 'trabalho');

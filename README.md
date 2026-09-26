@@ -53,15 +53,15 @@ Sistema de ponto separado do gerador de escala, para as 2 empresas do dono (até
 | `pontoeletronico/rosto.js` | Reconhecimento facial no navegador (biblioteca `@vladmandic/human` 3.3.6 via jsDelivr): descritor do rosto e notas de prova de vida; a comparação é no banco |
 | `pontoeletronico/foto.js` | Câmera da foto de prova: sempre ligada na tela da estação, captura no toque (240 px, WebP), SHA-256 e envio pela Edge Function |
 | `dev/supabase/functions/ponto-foto/` | Edge Function das fotos: `handler.js` (lógica, testada no Node) + `index.ts` (liga ao banco e ao Storage). Fica em `dev/`, bloqueada no site |
-| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0010, todas aplicadas (0010 = fase 2A, reconhecimento facial) |
-| `dev/tests/` | 180 testes: regras de apuração, reconhecimento facial,, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
+| `dev/db/migrations/*.sql` | Schema `ponto` no Supabase do Saas Financeiro (`dhmlltvdyhavpoyazaph`), 0001 a 0011, todas aplicadas (0011 = saída no intervalo + "Esqueci de marcar" pelo rosto) |
+| `dev/tests/` | 188 testes: regras de apuração, reconhecimento facial,, segurança, estações, fotos (incluindo a Edge Function) e as telas (jsdom ligado a um Postgres em memória) |
 
 **Como funciona por baixo:** as páginas são estáticas (Hostinger) e falam com o Supabase por uma única função pública, `public.ponto_rpc(fn, args)`, que só executa funções `ponto.api_*`. Tabelas e funções internas ficam no schema `ponto`, sem acesso para `anon`/`authenticated` (RLS ligado, privilégios revogados). Toda a regra (hora do servidor, NSR, hash encadeado, apuração, banco de horas) roda no banco. A chave `anon` é pública; **a `service_role` nunca vai para o frontend**.
 
 ### Operações do dia a dia (no diretório `dev/`)
 
 ```bash
-npm test                                                                   # 180 testes, ~90 s, não toca no banco real
+npm test                                                                   # 188 testes, ~90 s, não toca no banco real
 node --env-file=../../marcus-assistente/.env db/migrate.mjs                # aplica migrations novas (não repete)
 node --env-file=../../marcus-assistente/.env db/criar-codigo-instalacao.mjs  # código de uso único p/ criar o admin
 npx supabase functions deploy ponto-foto --project-ref dhmlltvdyhavpoyazaph --no-verify-jwt --workdir .   # publica a Edge Function das fotos (precisa de `npx supabase login` uma vez)
@@ -161,6 +161,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
   - [x] Fase 1 (no ar desde 26/09/2026): estação com várias empresas + abas, `imprime`/`reserva` por estação, sinal de vida e quadro de saúde. Migration 0008 aplicada e tela publicada em 26/09/2026 (commit `5e6feae`).
   - [x] Fase 2 (no ar desde 26/09/2026): foto como prova (câmera com contagem, 240 px WebP, hash na cadeia), Edge Function `ponto-foto`, compartimento privado `ponto-fotos`, relatório "Marcações e fotos", espaço usado, câmera no quadro de saúde. Migration 0009 aplicada, Edge Function publicada e tela publicada. Ainda não testada com câmera real: ligar "Tira foto de prova" na estação do tablet e conferir no relatório "Marcações e fotos". Expurgo das fotos vencidas fica na fase 4.
   - [x] Fase 2A (no ar desde 26/09/2026, commit `5e87235`): reconhecimento facial em modo totem (câmera como tela inicial, reconhece sem toque, tipo automático com contagem de 3 s, "Trocar"/"Não sou eu", prova de vida passiva, PIN como reserva com alerta `sem_rosto`), cadastro do rosto em 5 posições no painel, tentativas de reconhecimento no painel para calibrar. Migration 0010 aplicada em 26/09/2026 (pelo SQL Editor, conferida idêntica e anotada). Tela publicada. **Falta:** ligar "Reconhece rosto" na estação do tablet; cadastrar os rostos no tablet; calibrar o limiar (começa em 0,65) na primeira semana.
+  - [x] Ajustes do totem (no ar desde 26/09/2026): ir embora durante o intervalo ("Trocar → Saída"; o dia vale até a saída p/ intervalo, alerta "saiu no intervalo") e botão "Esqueci de marcar" no cartão (pedido de correção pelo rosto). Migration 0011 aplicada pelo script e tela publicada.
   - [ ] Fase 3: WhatsApp pelo Marcus + aviso de estação fora do ar (mexe no `marcus-assistente`).
   - [ ] Fase 4: backup (botão + Drive do RH + `manifest.txt`). Antes: confirmar backup sem PDF e o dono da pasta no Drive.
   - [ ] Fase 5: marcação sem internet (PIN cifrado com chave pública).
@@ -176,6 +177,7 @@ Se a nova funcionalidade mexer nesse formato, manter compatibilidade com arquivo
 | 21/09/2026 | Repositório no GitHub, deploy automático via Git da Hostinger e `.htaccess` bloqueando `.md` |
 | 21/09/2026 | Código trazido para `C:\projetos\escalarapida-site`, git iniciado, README e CLAUDE.md criados |
 | 21/09/2026 | Ponto eletrônico publicado em `/pontoeletronico` (impressão na Elgin i9, espelho mensal) |
+| 26/09/2026 | Regra nova: saída depois da saída p/ intervalo (dia vale até a saída p/ intervalo, alerta `saiu_no_intervalo`; antes era incompleto). Totem: sugere a volta depois do intervalo e ganhou "Esqueci de marcar". Migration 0011; 188 testes |
 | 26/09/2026 | Fase 2A publicada: reconhecimento facial em modo totem (migration 0010, `rosto.js`); biblioteca real conferida em Chrome sem janela com fotos de exemplo; limiar inicial 0,65; 180 testes |
 | 26/09/2026 | Corrigido: com o aviso "Permitir câmera?" aberto, a tela pedia a câmera de novo a cada 10 s e o aviso sumia antes do clique. Agora é um pedido só, sem prazo; câmera bloqueada mostra instrução e botão "Ativar câmera"; marcar ponto nunca espera a câmera |
 | 26/09/2026 | Foto: câmera sempre ligada na tela (foto no instante do toque, sem contagem); religa sozinha |

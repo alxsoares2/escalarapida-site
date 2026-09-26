@@ -703,3 +703,53 @@ test('painel: cadastro do rosto em 5 posições', async (t) => {
     p.fechar();
   });
 });
+
+test('totem: ir embora no intervalo e "Esqueci de marcar"', async (t) => {
+  const db = await novoBanco();
+  const c = await cenario(db);
+  await db.exec(`update ponto.estacao set nome = 'Tablet', imprime = false, tira_foto = true, reconhece_rosto = true`);
+  await db.query(`insert into ponto.rosto (funcionario_id, posicao, descritor, criado_em) values (1, 'frente', $1::real[], now())`, [ANA]);
+  await dia(db, 1, '2026-09-14', [['10:00', 'entrada'], ['13:00', 'saida_intervalo']]);
+  await fixarRelogio(db, '2026-09-14 13:20');
+  const ls = { ponto_estacao_token: c.token };
+  const abrirTotem = () => abrir(db, 'index.html', { localStorage: ls, foto: CAMERA_OK, rosto: RECONHECIMENTO, config: RAPIDO });
+
+  await t.test('depois da saída para o intervalo sugere a volta; "Trocar" permite ir embora', async () => {
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = olhando(ANA);
+    await p.esperar(() => p.$('#t-trocar'), 'contagem');
+    assert.match(p.$('.totem-tipo').textContent, /VOLTA DO INTERVALO/);
+    p.clicar(p.$('#t-trocar'));
+    await p.esperar(() => p.$('[data-t-tipo="saida"]'), 'opções');
+    p.clicar(p.$('[data-t-tipo="saida"]'));
+    await p.esperar(() => p.texto().includes('Saída registrada às'), 'gravou a saída');
+    const d = (await db.query(`select status, alertas from ponto.apurar(1, '2026-09-14', '2026-09-14')`)).rows[0];
+    assert.equal(d.status, 'trabalho');
+    assert.ok(d.alertas.includes('saiu_no_intervalo'));
+    p.fechar();
+  });
+
+  await t.test('"Esqueci de marcar" abre o pedido já com o motivo e envia pelo rosto', async () => {
+    await fixarRelogio(db, '2026-09-15 16:20');
+    const p = await abrirTotem();
+    await p.esperar(() => p.texto().includes('Aproxime o rosto'), 'espera');
+    p.w.__rosto = olhando(ANA);
+    await p.esperar(() => p.$('#t-esqueci'), 'contagem');
+    p.w.__rosto = { rostos: 0 };
+    p.clicar(p.$('#t-esqueci'));
+    await p.esperar(() => p.$('#te-enviar'), 'formulário');
+    assert.equal(p.$('#te-motivo').value, 'Esqueci de marcar');
+    await new Promise((r) => setTimeout(r, 1300));   // a contagem parou: nada é gravado enquanto preenche
+    assert.equal((await db.query(`select count(*)::int n from ponto.marcacao where marcado_em::date = '2026-09-15'`)).rows[0].n, 0);
+    p.clicar(p.$('#te-enviar'));
+    await p.esperar(() => p.texto().includes('Informe o dia e o horário'), 'pede o horário');
+    p.$('#te-tipo').value = 'entrada'; p.$('#te-data').value = '2026-09-15'; p.$('#te-hora').value = '10:00';
+    p.clicar(p.$('#te-enviar'));
+    await p.esperar(() => p.texto().includes('Pedido enviado'), 'pedido enviado');
+    const aj = (await db.query(`select tipo_marcacao::text t, status::text s, motivo from ponto.ajuste`)).rows;
+    assert.deepEqual(aj, [{ t: 'entrada', s: 'pendente', motivo: 'Esqueci de marcar' }]);
+    assert.equal(p.erros.length, 0, p.erros.join('\n'));
+    p.fechar();
+  });
+});

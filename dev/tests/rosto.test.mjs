@@ -216,3 +216,57 @@ test('estação: reconhecer exige tirar foto; tudo configurável pelo painel', a
     assert.equal((await rpc(db, fn, { token: 'errado' })).erro, 'estacao_invalida', fn);
   }
 });
+
+test('saiu no intervalo e "Esqueci de marcar" pelo rosto', async (t) => {
+  const { db, c, sessao, rec } = await pronto();
+  await rpc(db, 'admin_salvar_rosto', { sessao, funcionario_id: 1, amostras: cinco(ANA) });
+  let r = await rec(ANA);
+  await rpc(db, 'registrar_rosto', { token: c.token, reconhecimento: r.reconhecimento, tipo: 'entrada' });
+  await fixarRelogio(db, '2026-09-14 13:00');
+  r = await rec(ANA);
+  await rpc(db, 'registrar_rosto', { token: c.token, reconhecimento: r.reconhecimento, tipo: 'saida_intervalo' });
+
+  await t.test('depois da saída para o intervalo sugere a volta, mas aceita ir embora', async () => {
+    await fixarRelogio(db, '2026-09-14 13:10');
+    r = await rec(ANA);
+    assert.deepEqual([r.sugestao, r.opcoes], ['volta_intervalo', ['volta_intervalo', 'saida']]);
+    assert.equal((await rpc(db, 'registrar_rosto', { token: c.token, reconhecimento: r.reconhecimento, tipo: 'saida' })).ok, true);
+    const dia = (await db.query(`select status, trabalhado_min, saldo_min, alertas from ponto.apurar(1, '2026-09-14', '2026-09-14')`)).rows[0];
+    assert.deepEqual([dia.status, dia.trabalhado_min, dia.saldo_min], ['trabalho', 180, -180]);
+    assert.ok(dia.alertas.includes('saiu_no_intervalo'));
+  });
+
+  await t.test('"Esqueci de marcar": pedido pendente identificado pelo rosto', async () => {
+    await fixarRelogio(db, '2026-09-15 16:20');
+    r = await rec(ANA);
+    const p = await rpc(db, 'solicitar_correcao_rosto', { token: c.token, reconhecimento: r.reconhecimento,
+      tipo_marcacao: 'entrada', marcado_em: '2026-09-15T10:00', motivo: 'Esqueci de marcar' });
+    assert.equal(p.ok, true);
+    const aj = (await db.query('select funcionario_id, tipo::text, tipo_marcacao::text tm, status::text st, origem, motivo from ponto.ajuste where id = $1', [p.id])).rows[0];
+    assert.deepEqual(aj, { funcionario_id: 1, tipo: 'incluir', tm: 'entrada', st: 'pendente', origem: 'funcionario', motivo: 'Esqueci de marcar' });
+    // o identificador foi consumido: não serve para marcar nem para outro pedido
+    assert.equal((await rpc(db, 'registrar_rosto', { token: c.token, reconhecimento: r.reconhecimento, tipo: 'entrada' })).erro, 'reconhecimento_invalido');
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { token: c.token, reconhecimento: r.reconhecimento,
+      tipo_marcacao: 'entrada', marcado_em: '2026-09-15T10:00', motivo: 'x' })).erro, 'reconhecimento_invalido');
+  });
+
+  await t.test('o pedido aceita até 5 min depois do reconhecimento (a marcação só 60 s)', async () => {
+    r = await rec(ANA);
+    await fixarRelogio(db, '2026-09-15T16:24:30-03:00');
+    const base = { token: c.token, reconhecimento: r.reconhecimento, tipo_marcacao: 'saida_intervalo', marcado_em: '2026-09-15T13:00' };
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { ...base, motivo: ' ' })).erro, 'motivo_obrigatorio');
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { ...base, marcado_em: '2026-09-16T13:00', motivo: 'x' })).erro, 'data_invalida');
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { ...base, marcado_em: 'lixo', motivo: 'x' })).erro, 'data_invalida');
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { ...base, motivo: 'Esqueci de marcar' })).ok, true);
+    r = await rec(ANA);
+    await fixarRelogio(db, '2026-09-15T16:29:31-03:00');
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { ...base, reconhecimento: r.reconhecimento, motivo: 'x' })).erro, 'reconhecimento_invalido');
+  });
+
+  await t.test('não serve em outra estação', async () => {
+    await db.exec(`insert into ponto.estacao (empresa_id, nome, token_hash) values (1, 'Outra', ponto.sha256_hex('tok-2'))`);
+    r = await rec(ANA);
+    assert.equal((await rpc(db, 'solicitar_correcao_rosto', { token: 'tok-2', reconhecimento: r.reconhecimento,
+      tipo_marcacao: 'entrada', marcado_em: '2026-09-15T10:00', motivo: 'x' })).erro, 'reconhecimento_invalido');
+  });
+});

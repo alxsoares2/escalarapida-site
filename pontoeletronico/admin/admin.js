@@ -17,7 +17,8 @@
     feriado: 'Feriado', trabalho_folga: 'Trabalho em dia de folga', compensacao: 'Compensação', troca_horario: 'Horário trocado' };
   const ALERTA = { tolerancia_aplicada: 'Tolerância CLT aplicada', tolerancia_excedida: 'Tolerância excedida (>10 min)', intervalo_curto: 'Intervalo menor que o previsto',
     sem_intervalo: 'Sem marcação de intervalo', sem_saida: 'Sem saída', sem_volta_intervalo: 'Sem volta do intervalo',
-    marcacao_sem_entrada: 'Marcação sem entrada', mais_de_uma_jornada: 'Mais de uma jornada no dia' };
+    marcacao_sem_entrada: 'Marcação sem entrada', mais_de_uma_jornada: 'Mais de uma jornada no dia',
+    saiu_no_intervalo: 'Saiu no intervalo e não voltou' };
   const TIPOS_EXCECAO = { folga_domingo: 'Domingo de folga', dia_liberado: 'Dia liberado (abono)', trabalho_folga: 'Trabalho em dia de folga',
     troca_horario: 'Troca de horário', compensacao: 'Compensação (abate o banco)', atestado: 'Atestado', ferias: 'Férias', licenca: 'Licença', feriado: 'Feriado da empresa' };
 

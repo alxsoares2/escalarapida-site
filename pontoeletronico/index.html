@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>Ponto — Marcação</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-<link rel="stylesheet" href="ponto.css?v=20260927a" />
+<link rel="stylesheet" href="ponto.css?v=20260927b" />
 </head>
 <body class="estacao">
 
@@ -38,10 +38,10 @@
 </div>
 <div id="cupom" class="cupom" aria-hidden="true" style="display:none"></div>
 
-<script src="config.js?v=20260927a"></script>
-<script src="api.js?v=20260927a"></script>
-<script src="foto.js?v=20260927a"></script>
-<script src="rosto.js?v=20260927a"></script>
+<script src="config.js?v=20260927b"></script>
+<script src="api.js?v=20260927b"></script>
+<script src="foto.js?v=20260927b"></script>
+<script src="rosto.js?v=20260927b"></script>
 <script>
 (function () {
   const { rpc, msgErro, esc, hora, dataHora, TIPOS, hojeISO } = window.Ponto;
@@ -321,6 +321,7 @@
       '<div class="totem-tipo">' + esc(TIPOS[resp.sugestao]).toUpperCase() + '</div>' +
       '<div class="totem-cont" id="t-cont"></div>' +
       '<div class="totem-acoes">' + (outros.length ? '<button class="btn" id="t-trocar"><i class="ti ti-switch-horizontal"></i> Trocar</button>' : '') +
+      '<button class="btn" id="t-esqueci"><i class="ti ti-clock-edit"></i> Esqueci de marcar</button>' +
       '<button class="btn bad" id="t-nao">Não sou eu</button></div></div>');
     const mostrar = () => { $('t-cont').textContent = 'Registrando em ' + seg + '…'; };
     mostrar();
@@ -339,11 +340,43 @@
       // sem escolha em 15 s, desiste (o reconhecimento vence em 60 s de qualquer forma)
       contagem = setTimeout(() => { if (estadoT === 'confirmando') { rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento }); espera(); } }, 15000);
     };
+    $('t-esqueci').onclick = () => { clearInterval(contagem); telaEsqueci(resp); };
     $('t-nao').onclick = () => {
       clearInterval(contagem);
       rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento });
       espera({ texto: 'Tudo bem. Tente de novo ou toque em "Marcar com PIN".', tipo: '' });
     };
+  }
+
+  // "Esqueci de marcar" (11.4A): pedido de correção identificado pelo rosto reconhecido; o gestor decide.
+  function telaEsqueci(resp, erro) {
+    clearInterval(contagem); clearTimeout(contagem);
+    estadoT = 'corrigindo';
+    const hoje = hojeISO();
+    painel('<div class="totem-card"><div class="totem-nome" style="font-size:22px">' + esc(resp.funcionario.nome) + '</div>' +
+      '<div class="totem-emp">Qual marcação você esqueceu? O gestor vai aprovar ou recusar.</div>' +
+      (erro ? '<div class="msg erro" style="margin:10px 0 0">' + esc(erro) + '</div>' : '') +
+      '<div class="row" style="margin-top:12px;text-align:left"><div class="field"><label for="te-tipo">Marcação</label><select id="te-tipo">' +
+      Object.keys(TIPOS).map((t) => '<option value="' + t + '">' + esc(TIPOS[t]) + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label for="te-data">Dia</label><input type="date" id="te-data" value="' + hoje + '" max="' + hoje + '"></div>' +
+      '<div class="field"><label for="te-hora">Horário</label><input type="time" id="te-hora"></div></div>' +
+      '<div class="field" style="text-align:left"><label for="te-motivo">Motivo</label><input id="te-motivo" maxlength="200" value="Esqueci de marcar"></div>' +
+      '<div class="totem-acoes" style="margin-top:12px"><button class="btn pri" id="te-enviar">Enviar pedido</button><button class="btn" id="te-cancelar">Cancelar</button></div></div>');
+    $('te-cancelar').onclick = () => { rpc('cancelar_reconhecimento', { token, reconhecimento: resp.reconhecimento }); espera(); };
+    $('te-enviar').onclick = async () => {
+      const d = $('te-data').value, h = $('te-hora').value;
+      if (!d || !h) return telaEsqueci(resp, 'Informe o dia e o horário.');
+      $('te-enviar').disabled = true;
+      const r = await rpc('solicitar_correcao_rosto', { token, reconhecimento: resp.reconhecimento,
+        tipo_marcacao: $('te-tipo').value, marcado_em: d + 'T' + h, motivo: $('te-motivo').value.trim() });
+      if (!r.ok) {
+        if (r.erro === 'reconhecimento_invalido') return espera({ texto: msgErro(r.erro), tipo: 'erro' });
+        return telaEsqueci(resp, msgErro(r.erro));
+      }
+      espera({ texto: 'Pedido enviado. Se também precisa marcar o ponto de agora, olhe para a câmera.', tipo: 'ok' });
+    };
+    // sem uso por 3 min, desiste (o pedido aceita até 5 min depois do reconhecimento)
+    contagem = setTimeout(() => { if (estadoT === 'corrigindo') espera(); }, 3 * 60 * 1000);
   }
 
   async function gravar(resp, tipo, foto) {

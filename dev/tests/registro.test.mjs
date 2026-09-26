@@ -47,7 +47,9 @@ test('sequência de marcações e proteção contra toque duplo', async (t) => {
   await t.test('depois da entrada: intervalo ou saída direta; não outra entrada', async () => {
     assert.match(await erro(marca(db, 1, '2026-09-14 10:05', 'entrada')), /fora_de_sequencia/);
     await marca(db, 1, '2026-09-14 13:00', 'saida_intervalo');
-    assert.match(await erro(marca(db, 1, '2026-09-14 13:10', 'saida')), /fora_de_sequencia/);
+    // depois da saída para o intervalo: volta ou saída (saiu no intervalo, 5.4A); nunca outra entrada
+    assert.deepEqual((await db.query("select ponto.proximos_tipos(1)::text[] p")).rows[0].p, ['volta_intervalo', 'saida']);
+    assert.match(await erro(marca(db, 1, '2026-09-14 13:10', 'entrada')), /fora_de_sequencia/);
     await marca(db, 1, '2026-09-14 13:15', 'volta_intervalo');
     await marca(db, 1, '2026-09-14 16:15', 'saida');
   });

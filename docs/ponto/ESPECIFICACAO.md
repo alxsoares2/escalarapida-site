@@ -33,7 +33,7 @@ Regras de segurança da API: as tabelas nunca são acessadas direto; toda funç�
 6. **Impressão automática** do comprovante em impressora térmica não fiscal (**Elgin i9**, bobina de 80 mm ou 58 mm, ESC/POS): sai sozinho após cada marcação, sem janela de impressão, e há botão "Reimprimir". Implementado como impressão do navegador (CSS `@page` na largura da bobina) com o Chrome em modo `--kiosk-printing`, usando a i9 como impressora padrão do Windows. Configurável em `config.js` (`imprimirAoMarcar`, `larguraCupomMm`).
 7. **Só o gestor desvincula** um computador (desativa a estação no painel). A tela do balcão não tem botão para isso.
 
-**4 marcações por dia:** `entrada` → `saida_intervalo` → `volta_intervalo` → `saida`. A partir da entrada também é aceita `saida` direta (dia sem intervalo registrado, gera alerta).
+**4 marcações por dia:** `entrada` → `saida_intervalo` → `volta_intervalo` → `saida`. A partir da entrada também é aceita `saida` direta (dia sem intervalo registrado, gera alerta). **Depois da `saida_intervalo` também é aceita `saida`** ("saiu no intervalo e não voltou", decidido em 26/09/2026; ver 5.4A).
 
 Proteções:
 - **5 PINs errados seguidos bloqueiam o funcionário por 5 minutos.**
@@ -77,7 +77,8 @@ Estados do dia: `folga`, `trabalho`, `falta`, `incompleto`, `em_andamento`, `com
 1. **Dia esperado sem nenhuma marcação** (e sem compensação) e já passado → **falta**.
 2. **Dia esperado sem marcação, com `compensacao`** → `compensado`, debita o banco.
 3. **Dia de hoje ainda sem saída** → `em_andamento` (não é falta nem saldo).
-4. **Marcações faltando** (ex.: sem volta do intervalo, ou entrada sem saída em jornada antiga) → `incompleto`, **sem saldo**, aparece para você corrigir. *(Interpretação minha: "esqueceu de bater" com dia inteiro em branco é falta; marcação faltando no meio do dia é incompleto.)*
+4. **Marcações faltando** (ex.: entrada sem saída em jornada antiga) → `incompleto`, **sem saldo**, aparece para você corrigir.
+4A. **Saiu no intervalo e não voltou** (entrada, saída para o intervalo, saída; sem volta), decidido em 26/09/2026 → `trabalho`, com o alerta **`saiu_no_intervalo`**. Vale só o tempo **até a saída para o intervalo** (`trabalhado = saída_intervalo − entrada`); a saída final não acrescenta horas. Em dia esperado, `saldo = trabalhado − carga esperada` (sem tolerância: é saída antecipada). Adicional noturno conta só da entrada à saída para o intervalo. Se na verdade a volta foi esquecida, a correção (`incluir` a volta) transforma o dia num dia normal de 4 marcações. *(Antes desta decisão, esse caso era `incompleto` com o alerta `sem_volta_intervalo`.)* *(Interpretação minha: "esqueceu de bater" com dia inteiro em branco é falta; marcação faltando no meio do dia é incompleto.)*
 5. **Dia completo** → `trabalho`, com saldo:
    `saldo do dia = trabalhado − carga esperada`, onde `trabalhado = (saída_intervalo − entrada) + (saída − volta)`.
 6. **Dia não esperado com marcação** → tudo que foi trabalhado é crédito no banco.
@@ -121,7 +122,8 @@ Celular do funcionário, geolocalização, integração com o gerador de escala,
 - **Banco:** migrations 0001–0008 **aplicadas** no Supabase do Saas Financeiro (schema `ponto`; schemas `financeiro` e `assistente` intactos). Verificado: `anon` só executa `public.ponto_rpc`; todas as tabelas com RLS.
 - **Frontend:** estação (`/pontoeletronico/`) e painel (`/pontoeletronico/admin/`) **no ar desde 21/09/2026**, com a chave `anon` configurada e a conta do gestor criada. Impressão automática (Elgin i9), só o gestor desvincula e espelho novo também publicados (commits `173bb45` e `25e5a32`; arquivos no ar iguais ao repositório em 26/09/2026).
 - **Uso real:** ainda não. Em 26/09/2026 o banco tinha 1 empresa, 1 funcionário, 1 estação e 3 marcações, todas de 21/09 (testes da instalação).
-- **Testes:** 180 automáticos passando (apuração, segurança, estações, fotos e Edge Function, telas).
+- **Testes:** 188 automáticos passando (apuração, segurança, estações, fotos e Edge Function, telas).
+- **Saída no intervalo + "Esqueci de marcar" (26/09/2026), no ar:** migration 0011 (`proximos_tipos`, `tipo_sugerido`, `apurar` com a regra 5.4A, `criar_pedido_correcao`, `api_solicitar_correcao_rosto`). Aplicada pelo script e publicada.
 - **Versão 2, fase 2A (26/09/2026), no ar:** migration 0010 (`rosto`, `reconhecimento`, origem da marcação, `sem_rosto`, `reconhece_rosto`), `rosto.js`, tela do totem, cadastro do rosto no painel, tentativas para calibração. 0010 aplicada (pelo SQL Editor; conferida idêntica ao arquivo e anotada em `ponto.migracoes`). Tela publicada (commit `5e87235`). Falta testar com câmera real e calibrar o limiar.
 - **Versão 2, fase 2 (26/09/2026), no ar:** migration 0009 (`foto_hash` na cadeia, `foto_exigida`, tabela `foto`, `tira_foto`/`camera_ok` por estação, compartimento privado `ponto-fotos`), Edge Function `ponto-foto` (`dev/supabase/functions/`), câmera na estação (`foto.js`), relatório "Marcações e fotos" e espaço usado no painel. A hash sem foto é idêntica à da versão 1 (marcações antigas continuam conferindo). 0009 aplicada (pelo SQL Editor, conferida idêntica ao arquivo e anotada em `ponto.migracoes`), Edge Function publicada com `--no-verify-jwt` (a função se autentica sozinha), tela publicada. Falta o teste com a câmera real do tablet.
 - **Versão 2, fase 1 (26/09/2026), no ar:** migration 0008 (estação com várias empresas, `imprime`/`reserva` por estação, sinal de vida), abas por empresa e botões maiores no tablet, quadro de saúde no painel. Migration 0008 **aplicada** no banco real em 26/09/2026 (verificado: RLS ligado na tabela nova, `anon` só executa `public.ponto_rpc`, cadeia íntegra). Tela publicada no mesmo dia (commit `5e6feae`).
@@ -191,11 +193,14 @@ Decidido em 26/09/2026, depois de comparar com os pontos de mercado (Sólides To
 3. **Reconhecido:** tela grande com a foto do momento, **"Ana · Mano Italiano"** e o tipo sugerido em destaque (**"ENTRADA"**), com **contagem de 3 s**. Sem toque, grava sozinho e mostra **"Entrada registrada às 08:02 · NSR 123"** por 3 s; depois volta à espera. Durante a contagem:
    - **"Trocar"**: mostra os outros tipos válidos agora (ex.: "Saída para intervalo" / "Saída"); o toque grava o escolhido.
    - **"Não sou eu"**: cancela sem gravar e volta à espera (a tentativa fica registrada).
+   - **"Esqueci de marcar"** (decidido em 26/09/2026): para a contagem e abre o pedido de correção da seção 6 (qual marcação, dia, horário e motivo, já preenchido com "Esqueci de marcar"). A identificação é o próprio rosto reconhecido, no lugar do PIN: o pedido é aceito com o identificador do reconhecimento, sem uso anterior, em até **5 min** (a marcação por rosto continua exigindo 60 s). O pedido entra `pendente` e o gestor aprova ou recusa. Depois de enviar, a tela volta à espera; se a pessoa também precisa marcar o ponto de agora, olha para a câmera de novo.
    - A gravação só acontece **depois** da contagem, porque marcação não se apaga.
 4. **Não reconhecido** depois de ~5 s com um rosto na moldura: "Não reconhecemos. Tente de novo ou toque em Marcar com PIN." Volta à espera.
 5. Mesma pessoa de novo em menos de 1 min: não abre nova contagem ("Você acabou de marcar"), além da regra dos 30 s no banco.
 
-**Tipo automático (sugestão da contagem):** vem de `ponto.proximos_tipos` (sequência do dia). Quando há mais de uma opção (depois da entrada: intervalo **ou** saída direta), a sugestão usa a jornada vigente: a partir de **30 min antes da saída prevista**, sugere **Saída**; antes disso, **Saída para intervalo**. Sem jornada cadastrada: Saída para intervalo. O servidor devolve a sugestão e as alternativas junto com o reconhecimento.
+**Tipo automático (sugestão da contagem):** vem de `ponto.proximos_tipos` (sequência do dia). Quando há mais de uma opção:
+- depois da entrada (intervalo **ou** saída direta): usa a jornada vigente; a partir de **30 min antes da saída prevista**, sugere **Saída**; antes disso, **Saída para intervalo**. Sem jornada cadastrada: Saída para intervalo;
+- depois da saída para o intervalo (volta **ou** saída): sugere sempre **Volta do intervalo**; ir embora no intervalo é exceção e fica em "Trocar". O servidor devolve a sugestão e as alternativas junto com o reconhecimento.
 
 **Onde roda:** o modelo roda **no tablet**, no navegador (`@vladmandic/human` **3.3.6**, MIT, carregado do jsDelivr com versão fixa e guardado no aparelho; modelos: detecção de rosto, malha facial, descritor `faceres`, prova de vida `antispoof` + `liveness`). **A comparação é no servidor**: o tablet envia só o descritor; os descritores cadastrados **nunca saem do servidor** (tablet roubado não leva o cadastro de ninguém). Sem serviço pago.
 
